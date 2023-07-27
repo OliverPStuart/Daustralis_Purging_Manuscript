@@ -1,0 +1,27 @@
+# First, ignore everything
+*
+
+# Now, whitelist anything that's a directory
+!*/
+
+# We save the whole data and script directories
+!*Scripts*/*
+!*Data*/*
+
+# For analysis folders, specify what kinds of files we're keeping
+!pipeline.txt
+!*.R
+!*.sh
+!*.pl
+!README.md
+!*pipeline*.txt
+!Snakefile*
+!*.pbs
+!*.Rmd
+!*.slim
+!*.html
+!*.slurm
+!.gitignore
+
+# And finally ignore all binary files
+*._*
