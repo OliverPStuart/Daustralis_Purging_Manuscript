@@ -1,0 +1,180 @@
+#!/bin/bash
+
+##################################
+##################################
+####     ESTIMATING ALLELE    ####
+####  FREQUENCIES WITH ANGSD  ####
+##################################
+##################################
+
+#####################
+#### PBS DETAILS ####
+#####################
+
+#### User details
+
+#### Project name
+#PBS -P rh35
+####  Job name
+#PBS -N PCAngsd
+#### Email for notification
+#PBS -M oliver.stuart@anu.edu.au
+#### Only email if aborted or complete
+#PBS -m ae
+
+#### Resource requirements
+
+#### How many processors
+#PBS -l ncpus=48
+#### How much memory all up
+#PBS -l mem=100GB
+#### How much walltime
+#PBS -l walltime=48:00:00
+#### How much local space required
+#PBS -l jobfs=1GB
+#### Start the job by moving to the directory from which it was submitted
+#PBS -l wd
+
+#### STDOUT/ERR redirection
+
+#### STDOUT
+#PBS -o /home/147/os4776/PCAngsd.out
+#### STDERR
+#PBS -e /home/147/os4776/PCAngsd.err
+
+###################
+#### ENV SETUP ####
+###################
+
+# Data and script directories
+SCRATCH=/scratch/rh35/os4776/LHISI_WGS
+REF_DIR=${SCRATCH}/References
+ALN_DIR=${SCRATCH}/Alignments
+SCR_DIR=${SCRATCH}/Scripts
+HOME_DIR=/home/147/os4776
+
+#mkdir=${SCRATCH}/Analyses/PCAngsd
+
+OUT_DIR=${SCRATCH}/Analyses/PCAngsd
+
+# Local software directories
+ANGSD=${HOME_DIR}/angsd/angsd
+PCANGSD=${HOME_DIR}/pcangsd/pcangsd/pcangsd.py
+VCFTOOLS=${HOME_DIR}/vcftools/src/cpp/vcftools
+
+# Get into working directory
+WORKING_DIR=$PBS_JOBFS
+cd ${WORKING_DIR}
+
+# Make output directory for copying later
+#DATE=$(date '+%d%m%Y_%H%M%S')
+#mkdir ${SCRATCH}/Analyses/${PBS_JOBNAME}_${DATE}
+#OUT_DIR=${SCRATCH}/Analyses/${PBS_JOBNAME}_${DATE}
+# For this, we don't need to do this
+# Maybe retiring this storage strategy in future
+
+# Load python module to allow snakemake to run
+module load python3/3.10.4
+module load bedtools
+
+#######################
+#### ACTUAL SCRIPT ####
+#######################
+
+cd $OUT_DIR
+
+# Make a file containing the names of all individuals to be included
+# Remove samples that didn't run well
+
+# find $ALN_DIR | grep bam$ | grep -v "C01216\|C01233\|C01218\|C01226\|C10133" > all_bam_list.txt
+#
+# # Now loop over the estimated allele frequency files in the AlleleFrequency
+# # analysis directory. We want to get lists of sites in the genome estimated as
+# # variant previously
+#
+# # First get file of all sites
+#
+# for scaffold in 1 2 3 5 6 7 8 9 10 11 12 13 14 15 16 17
+#   do
+#   zcat ${SCRATCH}/Analyses/AlleleFrequencies/scaffold${scaffold}_all.mafs.gz | \
+#   awk 'NR > 1 {print $1"\t"$2-1"\t"$2}' >> tmp1.bed
+# done
+#
+# # In every scaffold, we print the minor allele frequency table, then we take
+# # away anything that has a maf within 0.02 of 1/2N. ANGSD will sometimes provide
+# # interesting maf estimates due to the probabilistic nature of the software e.g.
+# # for a sample of four chromosomes, an estimated maf might be 0.2578 instead of
+# # 0.25. For all samples, 1/2N is 0.026, hence the 0.02 threshold.
+#
+# for scaffold in 1 2 3 5 6 7 8 9 10 11 12 13 14 15 16 17
+#   do
+#   zcat ${SCRATCH}/Analyses/AlleleFrequencies/scaffold${scaffold}_all.mafs.gz | \
+#   awk 'NR > 1' | awk '($6 - 1/(2*$8)) > 0.02 || ($6 - 1/(2*$8)) < -0.02 {print $1"\t"$2-1"\t"$2}' >> tmp2.bed
+# done
+#
+# # When estimating allele frequencies, we only masked repetitive regions. We used
+# # the allele frequency site outputs to find regions of problematic mapping with
+# # ngsParalog. There is now a file in ${REF_DIR} called problematic_mapping.bed.
+# # We need to use this to masked the variants.
+#
+# bedtools subtract -a tmp1.bed -b ${REF_DIR}/problematic_regions.bed | \
+# awk '{print $1"\t"$3}' > sites
+# bedtools subtract -a tmp2.bed -b ${REF_DIR}/problematic_regions.bed | \
+# awk '{print $1"\t"$3}' > sites_maf
+#
+# rm tmp*
+#
+# # Now format as a vcf
+# echo -e "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO" > dummy.vcf
+# awk '{print $1"\t"$2"\t"$1"_"$2"\tA\tT\t100.00\tPASS\tNA"}' sites >> dummy.vcf
+#
+# echo -e "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO" > dummy_maf.vcf
+# awk '{print $1"\t"$2"\t"$1"_"$2"\tA\tT\t100.00\tPASS\tNA"}' sites_maf >> dummy_maf.vcf
+#
+#
+# # Now we can thin this to get pseudo-independence
+# ${VCFTOOLS} --vcf dummy.vcf --thin 50000 --recode --recode-INFO-all --out thin
+# ${VCFTOOLS} --vcf dummy_maf.vcf --thin 50000 --recode --recode-INFO-all --out thin_maf
+#
+# # Print as sites again
+# awk 'NR > 1 {print $1,$2}' thin.recode.vcf > sites_thin
+# awk 'NR > 1 {print $1,$2}' thin_maf.recode.vcf > sites_maf_thin
+# rm *vcf *log
+#
+# # Now index these with angsd
+#
+# ${ANGSD} sites index sites_thin
+# ${ANGSD} sites index sites_maf_thin
+#
+# sleep 10s
+#
+# touch sites_thin.*
+# touch sites_maf_thin.*
+
+# Now use angsd to get a genotype likelihood file for these sites
+${ANGSD} -b all_bam_list.txt -ref ${REF_DIR}/LHISI_Scaffold_Assembly.fasta -out all_thin \
+-uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+-minInd 9 -setMinDepthInd 1 -setMaxDepthInd 8 \
+-doCounts 1 -GL 2 -doGlf 2 -doMajorMinor 4 -nThreads 40 \
+-sites sites_thin
+
+${ANGSD} -b all_bam_list.txt -ref ${REF_DIR}/LHISI_Scaffold_Assembly.fasta -out all_thin_maf \
+-uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+-minInd 9 -setMinDepthInd 1 -setMaxDepthInd 8 \
+-doCounts 1 -GL 2 -doGlf 2 -doMajorMinor 4 -nThreads 40 \
+-sites sites_maf_thin
+
+### Everything below does not run on Gadi, but runs very fast on Fisher
+### So ${OUT_DIR} is copied to Fisher and PCANGSD is run there
+
+# Now we estimates covariance matrices from these beagle files
+# With each file we do a couple of minor allele frequency thresholds
+#${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin --inbreedSamples
+#${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_05 --inbreedSamples --minMaf 0.05
+#${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_10 --inbreedSamples --minMaf 0.10
+#${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_15 --inbreedSamples --minMaf 0.15
+#
+#${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf --inbreedSamples
+#${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_05 --inbreedSamples --minMaf 0.05
+#${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_10 --inbreedSamples --minMaf 0.10
+#${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_15 --inbreedSamples --minMaf 0.15

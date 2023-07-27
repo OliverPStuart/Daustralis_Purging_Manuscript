@@ -1,0 +1,152 @@
+### Snakefile for PAUL4 analysis. The pipeline takes reads, maps and
+### deduplicates them, calls variants in parallel with FreeBayes, and filters
+### them. Then it converts the filtered vcfs into psmc and plink formats. It
+### takes the plink format and identifies ROH across a few different parameter
+### settings. It takes the psmc format and performs psmc for the whole genome
+### and then performs 100 bootstraps. Finally, it calculates H for each
+### scaffold.
+
+### May add a rule to estimate recombination map using ismc.
+
+HOME_DIR = "/home/u6905905"
+READ_DIR = HOME_DIR + "/Reads/WGS"
+ALN_DIR = HOME_DIR + "/Alignments/WGS"
+REF_DIR = HOME_DIR + "/References"
+OUT_DIR = HOME_DIR + "/Analyses/PAUL4"
+
+### Modify this line to exclude or include scaffolds as necessary
+### Only include autosomes for this
+CHROMS = [1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17]
+### Define chunks for calling later
+NCHUNKS = 20
+CHUNKS = list(range(1,NCHUNKS+1))
+
+### Final rule
+rule all:
+	input: expand(OUT_DIR + "/PAUL4_Raw_Scaffold_{chrom}.vcf",chrom=CHROMS)
+
+### Map the files to the reference and follow samtools pipeline to remove duplicates
+rule map:
+	input:
+		ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
+		r1 = READ_DIR + "/PAUL4_R1.fastq.gz",
+		r2 = READ_DIR + "/PAUL4_R2.fastq.gz"
+	output:
+		ALN_DIR + "/PAUL4.bam"
+	params:
+		dir = ALN_DIR
+	threads: 46
+	shell:
+		"""
+		bwa mem -t {threads} -R "@RG\\tID:{wildcards.sample}\\tSM:{wildcards.sample}\\tLB:NEXTFLEX\\tPL:ILLUMINA" \
+		{input.ref} {input.r1} {input.r2} |
+		samtools fixmate -m -r -u - - | \
+		samtools sort -u -@ {threads} -T {params.dir}/{wildcards.sample}_1 - | \
+		samtools markdup -@ {threads} -T {params.dir}/{wildcards.sample}_2 --reference {input.ref} -r -f {params.dir}/{wildcards.sample}_dupstats.txt - - | \
+		samtools view -bh > {output}
+
+		mv PAUL4.bam PAUL4_WGS.bam
+		"""
+
+### Index the bam files
+rule index:
+	input:
+		ALN_DIR + "/PAUL4_WGS.bam"
+	output:
+		ALN_DIR + "/PAUL4_WGS.bam.bai"
+	threads: 46
+	shell:
+		"""
+		samtools index -@ {threads} {input}
+		"""
+
+### Rule to get depth statistics
+rule get_depth:
+	input:
+		bam = ALN_DIR + "/PAUL4_WGS.bam",
+		index = ALN_DIR + "/PAUL4_WGS.bam.bai"
+	output:
+		OUT_DIR + "/PAUL4_WGS.regions.bed.gz"
+	threads: 46
+	shell:
+		"""
+		mosdepth -t {threads} -n -Q 10 -b 10000 PAUL4_WGS {input.bam}
+		rm *mosdepth*
+		"""
+
+### Rule to make bed files to split up calling
+rule generate_freebayes_regions:
+	input:
+		ref_idx = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
+		index = REF_DIR + "/LHISI_Scaffold_Assembly.fasta.fai",
+	output:
+		regions = expand(REF_DIR + "/bed_files/genome.Scaffold_{chrom}.region.{i}.bed", chrom=CHROMS, i=CHUNKS)
+	params:
+		chroms = expand("Scaffold_{chrom}",chrom=CHROMS),
+		chunks = NCHUNKS,
+		home = HOME_DIR,
+		ref_dir = REF_DIR
+	shell:
+		"""
+		{params.home}/freebayes/scripts/fasta_generate_regions.py --chunks --chromosomes {params.chroms} --bed {params.ref_dir}/bed_files/genome {input.index} {params.chunks}
+		"""
+
+### Rule to do calls
+rule variant_calling_freebayes:
+	input:
+		bam = ALN_DIR + "/PAUL4_WGS.bam",
+		index = ALN_DIR + "/PAUL4_WGS.bam.bai",
+		ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
+		regions = REF_DIR + "/bed_files/genome.Scaffold_{chrom}.region.{i}.bed"
+	output:
+		OUT_DIR + "/{chrom}/variants.{i}.vcf"
+	params:
+		home = HOME_DIR
+	threads: 1
+	shell:
+		"""
+		{params.home}/freebayes_1.3.6 \
+		-f {input.ref} \
+		-t {input.regions} \
+		--use-best-n-alleles 2 \
+    --report-monomorphic \
+    -0 --min-coverage 10 -g 30 \
+		{input.bam} > {output}
+		"""
+
+### Rule to concat calls into chromosome specific directories
+rule concat_vcfs:
+	input:
+		calls = expand(OUT_DIR + "/{{chrom}}/variants.{i}.vcf", i=CHUNKS),
+		index = REF_DIR + "/LHISI_Scaffold_Assembly.fasta.fai"
+	output: OUT_DIR + "/PAUL4_Raw_Scaffold_{chrom}.vcf"
+	threads:4
+	params:
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
+
+		# We have to separate processing the header into two lines to avoid 141 error
+		# This occurs when a pipe is still streaming after the following command exits
+		cat {input.calls} | awk '/#/' > tmp2_{wildcards.chrom}
+		awk '1;/CHROM/{{exit}}' tmp2_{wildcards.chrom} >> head_{wildcards.chrom}
+
+		cat {input.calls} | awk '!/#/' | sort -k2,2n > tail_{wildcards.chrom}
+
+		cat head_{wildcards.chrom} tail_{wildcards.chrom} | vcfuniq > {output}
+
+		rm -rf tmp*_{wildcards.chrom} head_{wildcards.chrom} tail_{wildcards.chrom} {wildcards.chrom}
+		"""
+
+# rule filter_vcfs:
+### BIG Q HERE: BEST WAY TO FILTER REPEATS AND MAINTAIN MAX DATA
+### NOT ALL REPEATS NEED FILTERING FOR VARIANT CALLING PURPOSES
+### DOES IT MAKE A DIFFERENCE?
+# rule plink_format:
+# rule plink_ROH:
+# rule psmc_format:
+# rule psmc
+# rule psmc_bootstrap
+# rule H
+# rule ismc

@@ -1,0 +1,42 @@
+### Snakefile for estimating single-sample heterozygosity using angsd. We
+### estimate H for regions of depth 2-4 and 5-8 for each sample. We will end up
+### with slightly different precision for each sample at each depth class.
+
+### Set up environment
+### This snakefile is run using a PBS job submission script which first creates some inputs
+
+HOME_DIR = "/home/147/os4776"
+SCRATCH = "/scratch/rh35/os4776/LHISI_WGS"
+ALN_DIR = SCRATCH + "/Alignments"
+REF = SCRATCH + "/References/LHISI_Scaffold_Assembly.fasta"
+REF_DIR = SCRATCH + "/References"
+OUT_DIR = SCRATCH + "/Analyses/SlidingWindowH"
+ANGSD_DIR = HOME_DIR + "/angsd"
+
+pops = ["lhisi", "lhip"]
+results_pattern = OUT_DIR + "/{population}.hwe.gz"
+results = expand(results_pattern,population=pops)
+
+rule all:
+  input:
+    results
+
+### Rule to calculate hwe for all sites in both pops
+
+rule hobs:
+  input:
+    list = OUT_DIR + "/{population}_bam_list.txt",
+    sites = OUT_DIR + "/good_sites",
+    ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta"
+  output: OUT_DIR + "/{population}.hwe.gz"
+  threads: 12
+  params:
+    angsd = ANGSD_DIR,
+    out = OUT_DIR
+	resources: mem="30GB", time="03:00:00", tempstorage="1GB"
+	shell:
+		"""
+    {params.angsd}/angsd -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+    -b {wildcards.population}_bam_list.txt -P {threads} -out {params.out}/{wildcards.population} -ref {input.ref} -anc {input.ref} -sites {input.sites} \
+    -doCounts 1 -setMinDepthInd 3 -setMaxDepthInd 8 -doMajorMinor 2 -doHWE 1 -GL 2 2> {wildcards.population}_hwe.err
+		"""

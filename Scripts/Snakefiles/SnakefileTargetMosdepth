@@ -1,0 +1,84 @@
+### Snakefile for getting depth estimates from targeted sequencing
+### Requires a bed file for on and off target regions, see rule get_depth for names
+### Written for the LHISI target capture project
+
+### Environment, Gadi
+#HOME_DIR = "/home/147/os4776"
+#SCRATCH = "/scratch/rh35/os4776/LHISI_WGS"
+#REF_DIR = SCRATCH + "/References"
+#READ_DIR = SCRATCH + "/Reads/Exon"
+#ALN_DIR = SCRATCH + "/Alignments/Exon"
+
+### Environment, Dayhoff
+HOME_DIR = "/mnt/data/dayhoff/home/u6905905"
+REF_DIR = HOME_DIR + "/References"
+READ_DIR = HOME_DIR + "/Reads/Exon"
+ALN_DIR = HOME_DIR + "/Alignments/Exon"
+OUT_DIR = HOME_DIR + "/Analyses/AnalysingExonCoverage"
+
+### Get list of samples, used in rule:collate
+samples = [line.strip() for line in open("exon_sample_list.txt").readlines()]
+
+### Output is a table with all individuals and all regions mean + median coverage
+rule all:
+	input:
+		OUT_DIR + "/compiled_depth_table.txt"
+
+### Rule to get individual coverage tables
+rule get_depth:
+	input:
+		bam = ALN_DIR + "/{sample}.bam",
+		index = ALN_DIR + "/{sample}.bam.bai",
+		targets = REF_DIR + "/baits_to_nuc.bed",
+		off = REF_DIR + "/off_target.bed"
+	output:
+		OUT_DIR + "/{sample}_cov.txt"
+	params:
+		HOME_DIR = HOME_DIR,
+		OUT_DIR = OUT_DIR
+	threads: 4
+	shell:
+		"""
+		cd {params.OUT_DIR}
+
+		# Calculate mean/median depth per sample on target
+		mosdepth -t {threads} -n -Q 10 -b {input.targets} {wildcards.sample}_on_mean {input.bam}
+		mosdepth -t {threads} -m -n -Q 10 -b {input.targets} {wildcards.sample}_on_median {input.bam}
+
+		# Make temporary files
+		zcat {wildcards.sample}_on_mean.regions.bed.gz > {wildcards.sample}_on_mean
+		zcat {wildcards.sample}_on_median.regions.bed.gz | cut -f4 > {wildcards.sample}_on_median
+
+		# Do the same for off target
+		mosdepth -t {threads} -n -Q 10 -b {input.off} {wildcards.sample}_off_mean {input.bam}
+		mosdepth -t {threads} -m -n -Q 10 -b {input.off} {wildcards.sample}_off_median {input.bam}
+
+		# Make temporary files
+		zcat {wildcards.sample}_off_mean.regions.bed.gz > {wildcards.sample}_off_mean
+		zcat {wildcards.sample}_off_median.regions.bed.gz | cut -f4 > {wildcards.sample}_off_median
+
+		# Paste into single file
+		paste {wildcards.sample}_on_mean {wildcards.sample}_on_median | \
+		awk -v sample={wildcards.sample} '{{print $0"\t"sample"\tOn"}}' > {wildcards.sample}_tmp1
+		paste {wildcards.sample}_off_mean {wildcards.sample}_off_median | \
+		awk -v sample={wildcards.sample} '{{print $0"\t"sample"\tOff"}}' > {wildcards.sample}_tmp2
+		cat {wildcards.sample}_tmp1 {wildcards.sample}_tmp2 > {output}
+
+		rm {wildcards.sample}_on* {wildcards.sample}_off* {wildcards.sample}_tmp*
+		"""
+
+### Rule to collate table
+rule collate:
+	input: expand(OUT_DIR + "/{sample}_cov.txt",sample=samples)
+	output: OUT_DIR + "/compiled_depth_table.txt"
+	params:
+		OUT_DIR = OUT_DIR
+	shell:
+		"""
+		cd {params.OUT_DIR}
+
+		# Compile all per-sample tables into one table
+		echo -e "Scaffold\tStart\tEnd\tMean\tMedian\tSample\tTarget" > {output}
+		cat {input} >> {output}
+    rm *cov*
+		"""

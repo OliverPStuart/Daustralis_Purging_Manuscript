@@ -1,0 +1,190 @@
+#!/bin/bash
+
+###############################################
+###############################################
+#### TESTING ANGSD PIPELINE FOR GL CALLING ####
+###############################################
+###############################################
+
+#####################
+#### PBS DETAILS ####
+#####################
+
+#### User details
+
+#### Project name
+#PBS -P rh35
+####  Job name
+#PBS -N LHISI_WGS_ANGSD_GL_CALLING_LHISI
+#### Email for notification
+#PBS -M oliver.stuart@anu.edu.au
+#### Only email if aborted or complete
+#PBS -m ae
+
+#### Resource requirements
+
+#### How many processors
+#PBS -l ncpus=48
+#### How much memory all up
+#PBS -l mem=100GB
+#### How much walltime
+#PBS -l walltime=36:00:00
+#### How much local space required
+#PBS -l jobfs=5GB
+#### Start the job by moving to the directory from which it was submitted
+#PBS -l wd
+
+#### STDOUT/ERR redirection
+
+#### STDOUT
+#PBS -o /home/147/os4776/LHISI_WGS_ANGSD_GL_CALLING_LHISI.out
+#### STDERR
+#PBS -e /home/147/os4776/LHISI_WGS_ANGSD_GL_CALLING_LHISI.err
+
+###################
+#### ENV SETUP ####
+###################
+
+module load bedtools
+module load htslib/1.12
+
+# Data and script directories
+HOME_DIR=/scratch/rh35/os4776/LHISI_WGS
+REF_DIR=${HOME_DIR}/References
+ALN_DIR=${HOME_DIR}/Alignments
+SCR_DIR=${HOME_DIR}/Scripts
+
+# Local software directories
+VCFTOOLS=/home/147/os4776/vcftools/src/cpp/vcftools
+ANGSD=/home/147/os4776/angsd/angsd
+
+# Get into working directory
+WORKING_DIR=$PBS_JOBFS
+cd ${WORKING_DIR}
+
+# Make output directory for copying later
+DATE=$(date '+%d%m%Y_%H%M%S')
+mkdir ${HOME_DIR}/Analyses/${PBS_JOBNAME}_${DATE}
+OUT_DIR=${HOME_DIR}/Analyses/${PBS_JOBNAME}_${DATE}
+
+#######################
+#### ACTUAL SCRIPT ####
+#######################
+
+# First we get a list of all bams, and remove the ones we know didn't sequence well
+# We also subset into lists of LHIP and LHISI and wild individuals
+find ${ALN_DIR} | grep bam$ | grep -v "C01216\|C01233\|C01218\|C01226\|C10133" > all_bam_list.txt
+grep "PAUL\|VAN" all_bam_list.txt > wild_bam_list.txt
+grep "C01211\|C01217\|C01220\|C01224\|C01225\|C01230\|C01234\|C10223" all_bam_list.txt > lhip_bam_list.txt
+grep "C01210\|C01213\|C01215\|C01219\|C01222\|C01223\|C01227\|C01231\|C01232" all_bam_list.txt > lhisi_bam_list.txt
+
+# Now we remake the all_bam_list.txt file so that we have a slightly neater sample order
+cat wild_bam_list.txt lhip_bam_list.txt lhisi_bam_list.txt > all_bam_list.txt
+
+# Copy the lists into the out directory
+cp *list* ${OUT_DIR}
+
+# Make a region file which contains the autosomes
+# And a repeat mask bedfile for masking variants later one
+# In reality, this is usually done locally since these files are reused often and kept in the $REF_DIR
+
+#bioawk -c fastx 'length($seq) > 1000000 && $name != "Scaffold_4" {print $name":"1"-"length($seq)}' ${REF_DIR}/LHISI_Scaffold_Assembly.fasta > ${REF_DIR}/autosome_regions.bed
+#zcat $REF_DIR/Annotation/LHISI_Scaffold_Assembly.RepeatMasked.gff.gz | awk '{print $1"\t"$4-1"\t"$5-1}' | sed 's/[\t]*$//' > ${REF_DIR}/Annotation/repeats.bed
+
+# We could also repeat mask here, but doing so breaks up scaffolds into many chunks
+# This greatly slows down angsd, so we will call everything first, since sites are called independently
+# Then repeat mask the output sites list for recalling both thinned and unthinned
+# This might seem slower, since we could just start by calling in non-repetitive regions, but the lookup process is very slow
+# Counterintuitive, but it's quicker to just call across the whole genome three times for each population set
+
+# Now we loop over different POP subdivisions (wild, lhip, lhisi) and estimate GLs
+
+for POP in lhisi
+do
+
+# Get the minimum samples required for considering a site
+# N/2 or 2 for the wild case
+# This will make variant detection for wild underpowered but it already is
+
+if [ $POP = wild ]
+then
+	MININD=2
+else
+	NUM=$(wc -l ${POP}_bam_list.txt | cut -d " " -f1)
+	MININD=$(echo $((${NUM}/2)))
+fi
+
+# Estimate GLFs with lots of filters
+# If we only want a binary file (-doGlf 3) then it takes way less time
+# This output will give us GLF files and MAF files
+
+$ANGSD -b ${POP}_bam_list.txt -ref ${REF_DIR}/LHISI_Scaffold_Assembly.fasta -out raw_gls_${POP} \
+        -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+				-minInd ${MIN} -setMinDepthInd 1 -setMaxDepthInd 8 -SNP_pval 1e-6 \
+				-doCounts 1 -GL 2 -doGlf 3 -nThreads ${PBS_NCPUS} -doMaf 1 -doMajorMinor 1 \
+				-rf ${REF_DIR}/autosome_regions.bed
+
+# Print out variants from the *mafs.gz file as a bed
+# We keep the frequency column and the nInd columns
+# Be careful translating between glf (1-based) and bed (0-based) formats
+
+zcat raw_gls_${POP}.mafs.gz | awk ' NR > 1{print $1"\t"$2-1"\t"$2"\t"$6"\t"$8}' > raw_variants_${POP}.bed
+
+# Also make a file for the glf sites in the same file format as the others
+
+zcat raw_gls_${POP}.glf.pos.gz | awk '{print $1"\t"$2}' > raw_variants_${POP}.txt
+
+# We subtract repeat regions from the list of sites
+# We don't bother filtering by minmaf here since we can do that at any later stage
+
+bedtools subtract -a raw_variants_${POP}.bed -b ${REF_DIR}/Annotation/repeats.bed > masked_variants_${POP}.bed
+
+# Now make a sites file for the masked variants
+
+cut -f1,3 masked_variants_${POP}.bed > masked_variants_${POP}.txt
+
+# Make a dummy vcf file, and we thin it with vcftools
+# We want to be pretty stringent here, bottlenecks will have exacerbated LD
+
+echo -e "#CHROM\tPOS" > dummy.vcf
+# At this step, create a minmaf filter using the $4 maf and $5 nInd columns
+# We use 1.2/($4*2) to avoid any noisy estimation by angsd
+# e.g. for only four chromosomes it might estimate maf=0.27 or something strange
+# Also don't forget the factor of 2
+awk '$4 > (1.1/($5*2)) {print $1"\t"$3}' masked_variants_${POP}.bed >> dummy.vcf
+$VCFTOOLS --vcf dummy.vcf --thin 50000 --out temp --recode
+awk 'NR > 1 {print $1"\t"$2}' temp.recode.vcf > thinned_masked_variants_${POP}.txt
+rm temp* dummy* raw_variants_${POP}.bed
+
+# Used angsd to index the thinned and masked variants
+
+$ANGSD sites index masked_variants_${POP}.txt
+$ANGSD sites index thinned_masked_variants_${POP}.txt
+
+# Wait a second, then touch index files to make them appear older than sites file
+# This is that weird ANGSD bug that modified access times on the original file being indexed
+
+sleep 3s
+touch masked_variants_${POP}.txt.bin masked_variants_${POP}.txt.idx
+touch thinned_masked_variants_${POP}.txt.bin thinned_masked_variants_${POP}.txt.idx
+
+# Now call angsd again for both the masked variants and the thinned variants
+# We remove all site filters (those to do with depth and individuals), since we're calling pre-ascertained sites
+# And this time we also estimate minor allele frequencies
+
+$ANGSD -b ${POP}_bam_list.txt -ref ${REF_DIR}/LHISI_Scaffold_Assembly.fasta -out masked_gls_${POP} \
+        -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+				-doCounts 1 -GL 2 -doGlf 3 -nThreads ${PBS_NCPUS} -doMaf 1 -doMajorMinor 1 \
+				-rf ${REF_DIR}/autosome_regions.bed -sites masked_variants_${POP}.txt
+
+$ANGSD -b ${POP}_bam_list.txt -ref ${REF_DIR}/LHISI_Scaffold_Assembly.fasta -out thinned_masked_gls_${POP} \
+        -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+				-doCounts 1 -GL 2 -doGlf 3 -nThreads ${PBS_NCPUS} -doMaf 1 -doMajorMinor 1 \
+				-rf ${REF_DIR}/autosome_regions.bed -sites thinned_masked_variants_${POP}.txt
+
+# Transfer everything to outdir
+# Do this inside the loop to avoid losing everything if the job times out
+mkdir ${OUT_DIR}/${POP}
+cp *${POP}* ${OUT_DIR}/${POP}
+
+done

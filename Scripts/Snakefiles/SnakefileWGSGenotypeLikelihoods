@@ -1,0 +1,119 @@
+### Snakefile for calculating genotype likelihoods from WGS data
+### The outputs for this are intended for use with RZooROH
+
+### Set up environment
+
+### GADI ENV
+HOME_DIR = "/home/147/os4776"
+SCRATCH = "/scratch/rh35/os4776/LHISI_WGS"
+ALN_DIR = SCRATCH + "/Alignments"
+REF = SCRATCH + "/References/LHISI_Scaffold_Assembly.fasta"
+REF_DIR = SCRATCH + "/References"
+OUT_DIR = SCRATCH + "/Analyses/GenotypeLikelihoodROH"
+ANGSD_DIR = HOME_DIR + "/angsd"
+
+### FISHER ENV
+#HOME_DIR = "/home/oliver"
+#SCRATCH = "/home/oliver"
+#ALN_DIR = SCRATCH + "/Alignments"
+#REF = SCRATCH + "/References/LHISI_Scaffold_Assembly.fasta"
+#REF_DIR = SCRATCH + "/References"
+#OUT_DIR = SCRATCH + "/Analyses/GenotypeLikelihoodROH"
+#ANGSD_DIR = HOME_DIR + "/angsd"
+
+### We do this chromosome by chromosome to speed up the process
+### This also makes handling everything easier, as outputs can be quite large
+### The output tables, although zipped, have (3 + 3 * samples) columns and (1 + sites) fields
+
+### Specify scaffold indices, expand to names, then fill results vector
+SCAFFOLDS = [1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17]
+POPS = ["lhisi", "lhip", "all"]
+
+results_pattern = OUT_DIR + "/{population}_scaffold{scaf}.beagle.gz"
+results = expand(results_pattern,population=POPS,scaf=SCAFFOLDS)
+
+rule all:
+	input:
+		results
+
+### Rule to make the whole-genome mask for later. Sleep + touch is used to make
+### *.idx/*.bin files look older than the sites file, since angsd does some
+### funny rewriting there.
+
+rule make_mask:
+	input:
+		autosome = REF_DIR + "/autosome_regions.bed",
+		mask = REF_DIR + "/Annotation/repeats.bed",
+		problematic = REF_DIR + "/problematic_regions.bed"
+	output: OUT_DIR + "/autosome_regions_masked"
+	threads: 10
+	params:
+		angsd = ANGSD_DIR,
+		out = OUT_DIR
+	resources: mem="20GB", time="01:00:00", tempstorage="1GB"
+	shell:
+		"""
+		module load bedtools
+		cd {params.out}
+
+		# Combine repeat mask and mapping filter
+		cat {input.mask} {input.problematic} | \
+		sort -k 1,1 -k2,2n | \
+		bedtools merge -i stdin > tmp1
+
+		# Subtract this combined mask from the autosomes
+		bedtools subtract -a {input.autosome} -b tmp1 | \
+		awk '{{print $1"\t"$2+1"\t"$3+1}}' > {output}
+
+		# Now index it with angsd
+		{params.angsd}/angsd sites index {output}
+		sleep 3s
+		touch {output}.*
+
+		rm tmp1
+		"""
+
+### Rule to estimate GLs per population per scaffold
+
+rule estimate_gls:
+  input:
+    list = "{population}_bam_list.txt",
+    ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
+    mask = OUT_DIR + "/autosome_regions_masked"
+  output:
+    OUT_DIR + "/{population}_scaffold{scaffold}.beagle.gz"
+  threads: 10
+  params:
+    angsd = ANGSD_DIR,
+    out = OUT_DIR,
+    prefix = "{population}_scaffold{scaffold}"
+  resources: mem="40GB", time="6:00:00", tempstorage="1GB"
+  shell:
+    """
+
+		# Use input list to define minimum number of individuals to consider site
+		POP={wildcards.population}
+		if [ $POP == "all" ]
+		then
+			MIN_IND=9
+		elif [ $POP == "lhisi" ]
+		then
+			MIN_IND=4
+		elif [ $POP == "lhip" ]
+		then
+			MIN_IND=4
+		fi
+
+		# Order of angsd lines is:
+      # File input/output
+      # Read filters
+      # Sample filters
+      # Subroutines invoked
+      # Masks
+
+    {params.angsd}/angsd -b {input.list} -ref {input.ref} -out {params.out}/{params.prefix} \
+    -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+    -SNP_pval 1e-4 -minInd $MIN_IND -setMinDepthInd 2 -setMaxDepthInd 8 \
+    -doCounts 1 -GL 2 -doGlf 2 -doMaf 1 -doMajorMinor 1 -nThreads {threads} \
+    -sites {input.mask} -r Scaffold_{wildcards.scaffold}:1- 1> {params.out}/{params.prefix}.out 2> {params.out}/{params.prefix}.err
+    """

@@ -1,0 +1,100 @@
+#!/bin/bash
+
+##################################
+##################################
+####     ESTIMATING H ALONG   ####
+####         CHROMOSOMES      ####
+##################################
+##################################
+
+#####################
+#### PBS DETAILS ####
+#####################
+
+#### User details
+
+#### Project name
+#PBS -P rh35
+####  Job name
+#PBS -N SnakemakeHWE
+#### Email for notification
+#PBS -M oliver.stuart@anu.edu.au
+#### Only email if aborted or complete
+#PBS -m ae
+
+#### Resource requirements
+
+#### How many processors
+#PBS -l ncpus=48
+#### How much memory all up
+#PBS -l mem=192GB
+#### How much walltime
+#PBS -l walltime=48:00:00
+#### How much local space required
+#PBS -l jobfs=10GB
+#### Start the job by moving to the directory from which it was submitted
+#PBS -l wd
+
+#### STDOUT/ERR redirection
+
+#### STDOUT
+#PBS -o /home/147/os4776/SnakemakeHWE.out
+#### STDERR
+#PBS -e /home/147/os4776/SnakemakeHWE.err
+
+###################
+#### ENV SETUP ####
+###################
+
+# Data and script directories
+SCRATCH=/scratch/rh35/os4776/LHISI_WGS
+REF_DIR=${SCRATCH}/References
+ALN_DIR=${SCRATCH}/Alignments
+SCR_DIR=${SCRATCH}/Scripts
+HOME_DIR=/home/147/os4776
+
+#mkdir=${SCRATCH}/Analyses/SlidingWindowH
+
+OUT_DIR=${SCRATCH}/Analyses/SlidingWindowH
+
+# Local software directories
+ANGSD=/home/147/os4776/angsd/angsd
+SNAKEMAKE=${HOME_DIR}/.local/bin/snakemake
+
+# Load python module to allow snakemake to run
+module load python3/3.10.4
+module load bedtools
+
+#######################
+#### ACTUAL SCRIPT ####
+#######################
+
+cd ${OUT_DIR}
+
+# Make a file containing the names of sample bams
+# Remove samples that didn't run well
+
+#find $ALN_DIR | grep bam$ | grep -v "C01216\|C01233\|C01218\|C01226\|C10133" > all_bam_list.txt
+
+#grep "C01230\|C01225\|C10223\|C01211\|C01217\|C01220\|C01234\|C01224" all_bam_list.txt > lhip_bam_list.txt
+#grep "C01210\|C01215\|C01223\|C01222\|C01232\|C01231\|C01219\|C01227\|C01213" all_bam_list.txt > lhisi_bam_list.txt
+
+# Make bed file of sites
+# This is all sites in the genome, but excluding repetitive and non-mappable regions
+
+#grep -v "Scaffold_4" ${REF_DIR}/major_scaffold_regions.bed > autosomes.bed
+#bedtools subtract -a autosomes.bed -b ${REF_DIR}/problematic_regions.bed > tmp
+#bedtools subtract -a tmp -b ${REF_DIR}/Annotation/repeats.bed | \
+#awk '{print $1 "\t" $2+1 "\t" $3+1}' > good_sites
+
+#${ANGSD} sites index good_sites
+
+#sleep 5s
+
+#touch good_sites.*
+
+#rm tmp
+
+# Now run the snakefile
+
+${SNAKEMAKE} -s ${HOME_DIR}/SnakefileHWE --cores 48

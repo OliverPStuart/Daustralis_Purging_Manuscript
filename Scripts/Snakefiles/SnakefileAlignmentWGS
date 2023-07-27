@@ -1,0 +1,83 @@
+### Snakefile for mapping of whole-genome sequencing reads from LHISI project
+### Assumes following directory structure
+
+### ~/
+### ~/Reads
+### ~/Reads/WGS
+### ~/References
+
+### All libraries were sequenced twice, so each sample has L001 and L002 files
+### All sequencing was paired end, so each library has R1 and R2 files
+### This is four files per sample
+
+### Get sample names from list file
+### Expand into results, which for this case is the completed bam index files
+samples = [line.strip() for line in open("wgs_sample_list.txt").readlines()]
+results_pattern = "Alignments/WGS/{sample}.bam.bai"
+results = expand(results_pattern,sample=samples)
+
+rule all:
+	input:
+		results
+
+### Combine the L001 and L002 reads into one temp file
+rule cat:
+	input:
+		r1_1="Reads/WGS/{sample}_L001_R1.fastq.gz",
+		r1_2="Reads/WGS/{sample}_L002_R1.fastq.gz",
+		r2_1="Reads/WGS/{sample}_L001_R2.fastq.gz",
+		r2_2="Reads/WGS/{sample}_L002_R2.fastq.gz"
+	output:
+		r1="Reads/WGS/temp_{sample}_R1.fastq.gz",
+		r2="Reads/WGS/temp_{sample}_R2.fastq.gz"
+	shell:
+		"""
+		cat {input.r1_1} {input.r1_2} > {output.r1}
+		cat {input.r2_1} {input.r2_2} > {output.r2}
+		"""
+
+### Map the files to the reference, then sort. Although this is a PCR-free
+### protocol, after aligning and observing I did see something obvious
+### duplicates. So, we will remove them
+
+
+rule map:
+	input:
+		ref="References/LHISI_Scaffold_Assembly.fasta",
+		r1="Reads/WGS/temp_{sample}_R1.fastq.gz",
+		r2="Reads/WGS/temp_{sample}_R2.fastq.gz"
+	output:
+		"Alignments/WGS/{sample}.bam"
+	threads: 10
+	shell:
+		"""
+		bwa mem -t {threads} -R "@RG\\tID:{wildcards.sample}\\tSM:{wildcards.sample}\\tLB:NEXTFLEX\\tPL:ILLUMINA" \
+		{input.ref} {input.r1} {input.r2} |
+		samtools fixmate -m -r -u - - | \
+		samtools sort -u -@ {threads} -T Alignments/WGS/{wildcards.sample}_1 - | \
+		samtools markdup -@ {threads} -T Alignments/WGS/{wildcards.sample}_2 --reference {input.ref} -r -f Alignments/WGS/{wildcards.sample}_dupstats.txt - - | \
+		samtools view -bh >  {output}
+		"""
+
+### Index the bam files
+rule index:
+	input:
+		"Alignments/WGS/{sample}.bam"
+	output:
+		"Alignments/WGS/{sample}.bam.bai"
+	threads: 10
+	shell:
+		"""
+		samtools index -@ {threads} {input}
+		"""
+
+### Remove the temp files
+rule remove:
+	input:
+		index="Alignments/WGS/{sample}.bam.bai",
+		r1="Reads/WGS/temp_{sample}_R1.fastq.gz",
+		r2="Reads/WGS/temp_{sample}_R2.fastq.gz"
+	shell:
+		"""
+		rm {input.r1} {input.r2}
+		"""
