@@ -8,15 +8,16 @@
 
 ### May add a rule to estimate recombination map using ismc.
 
-HOME_DIR = "/home/u6905905"
+HOME_DIR = "/home/scratch/groups/mikheyev/LHISI"
 READ_DIR = HOME_DIR + "/Reads/WGS"
 ALN_DIR = HOME_DIR + "/Alignments/WGS"
 REF_DIR = HOME_DIR + "/References"
-OUT_DIR = HOME_DIR + "/Analyses/PAUL4"
+OUT_DIR = HOME_DIR + "/Analysis/PAUL4"
+SOFT_DIR = "/home/u6905905/"
 
 ### Modify this line to exclude or include scaffolds as necessary
 ### Only include autosomes for this
-CHROMS = [1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17]
+CHROMS = [CM056993.1,CM056994.1,CM056995.1,CM056996.1,CM056997.1,CM056998.1,CM056999.1,CM057000.1,CM057001.1,CM057002.1,CM057003.1,CM057004.1,CM057005.1,CM057006.1,CM057007.1,CM057008.1]
 ### Define chunks for calling later
 NCHUNKS = 20
 CHUNKS = list(range(1,NCHUNKS+1))
@@ -32,20 +33,18 @@ rule map:
 		r1 = READ_DIR + "/PAUL4_R1.fastq.gz",
 		r2 = READ_DIR + "/PAUL4_R2.fastq.gz"
 	output:
-		ALN_DIR + "/PAUL4.bam"
+		ALN_DIR + "/PAUL4_WGS.bam"
 	params:
 		dir = ALN_DIR
 	threads: 46
 	shell:
 		"""
-		bwa mem -t {threads} -R "@RG\\tID:{wildcards.sample}\\tSM:{wildcards.sample}\\tLB:NEXTFLEX\\tPL:ILLUMINA" \
+		bwa mem -t {threads} -R "@RG\\tID:PAUL4\\tSM:PAUL4\\tLB:NEXTFLEX\\tPL:ILLUMINA" \
 		{input.ref} {input.r1} {input.r2} |
 		samtools fixmate -m -r -u - - | \
-		samtools sort -u -@ {threads} -T {params.dir}/{wildcards.sample}_1 - | \
-		samtools markdup -@ {threads} -T {params.dir}/{wildcards.sample}_2 --reference {input.ref} -r -f {params.dir}/{wildcards.sample}_dupstats.txt - - | \
+		samtools sort -u -@ {threads} -T {params.dir}/PAUL4_WGS_1 - | \
+		samtools markdup -@ {threads} -T {params.dir}/PAUL4_WGS_2 --reference {input.ref} -r -f {params.dir}/PAUL4_WGS_dupstats.txt - - | \
 		samtools view -bh > {output}
-
-		mv PAUL4.bam PAUL4_WGS.bam
 		"""
 
 ### Index the bam files
@@ -84,11 +83,11 @@ rule generate_freebayes_regions:
 	params:
 		chroms = expand("Scaffold_{chrom}",chrom=CHROMS),
 		chunks = NCHUNKS,
-		home = HOME_DIR,
+		soft = soft_dir,
 		ref_dir = REF_DIR
 	shell:
 		"""
-		{params.home}/freebayes/scripts/fasta_generate_regions.py --chunks --chromosomes {params.chroms} --bed {params.ref_dir}/bed_files/genome {input.index} {params.chunks}
+		{params.soft}/freebayes/scripts/fasta_generate_regions.py --chunks --chromosomes {params.chroms} --bed {params.ref_dir}/bed_files/genome {input.index} {params.chunks}
 		"""
 
 ### Rule to do calls
@@ -101,11 +100,11 @@ rule variant_calling_freebayes:
 	output:
 		OUT_DIR + "/{chrom}/variants.{i}.vcf"
 	params:
-		home = HOME_DIR
+		soft = SOFT_DIR
 	threads: 1
 	shell:
 		"""
-		{params.home}/freebayes_1.3.6 \
+		{params.soft}/freebayes_1.3.6 \
 		-f {input.ref} \
 		-t {input.regions} \
 		--use-best-n-alleles 2 \
