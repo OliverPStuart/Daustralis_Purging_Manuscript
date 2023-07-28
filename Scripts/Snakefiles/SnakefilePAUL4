@@ -13,23 +13,24 @@ READ_DIR = HOME_DIR + "/Reads/WGS"
 ALN_DIR = HOME_DIR + "/Alignments/WGS"
 REF_DIR = HOME_DIR + "/References"
 OUT_DIR = HOME_DIR + "/Analysis/PAUL4"
-SOFT_DIR = "/home/u6905905/"
+SOFT_DIR = "/mnt/data/dayhoff/home/u6905905/"
 
 ### Modify this line to exclude or include scaffolds as necessary
 ### Only include autosomes for this
-CHROMS = [CM056993.1,CM056994.1,CM056995.1,CM056996.1,CM056997.1,CM056998.1,CM056999.1,CM057000.1,CM057001.1,CM057002.1,CM057003.1,CM057004.1,CM057005.1,CM057006.1,CM057007.1,CM057008.1]
+CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
+### CHROMS = ["CM057008.1"] # tester line
 ### Define chunks for calling later
 NCHUNKS = 20
 CHUNKS = list(range(1,NCHUNKS+1))
 
 ### Final rule
 rule all:
-	input: expand(OUT_DIR + "/PAUL4_Raw_Scaffold_{chrom}.vcf",chrom=CHROMS)
+	input: expand(OUT_DIR + "/PAUL4_Raw_{chrom}.vcf",chrom=CHROMS)
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
 	input:
-		ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
+		ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
 		r1 = READ_DIR + "/PAUL4_R1.fastq.gz",
 		r2 = READ_DIR + "/PAUL4_R2.fastq.gz"
 	output:
@@ -76,18 +77,23 @@ rule get_depth:
 ### Rule to make bed files to split up calling
 rule generate_freebayes_regions:
 	input:
-		ref_idx = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
-		index = REF_DIR + "/LHISI_Scaffold_Assembly.fasta.fai",
+		ref_idx = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
+		index = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta.fai",
 	output:
-		regions = expand(REF_DIR + "/bed_files/genome.Scaffold_{chrom}.region.{i}.bed", chrom=CHROMS, i=CHUNKS)
+		regions = expand(REF_DIR + "/bed_files/genome.{chrom}.region.{i}.bed", chrom=CHROMS, i=CHUNKS)
 	params:
-		chroms = expand("Scaffold_{chrom}",chrom=CHROMS),
+		chroms = CHROMS,
 		chunks = NCHUNKS,
-		soft = soft_dir,
+		soft = SOFT_DIR,
 		ref_dir = REF_DIR
 	shell:
 		"""
-		{params.soft}/freebayes/scripts/fasta_generate_regions.py --chunks --chromosomes {params.chroms} --bed {params.ref_dir}/bed_files/genome {input.index} {params.chunks}
+		{params.soft}/freebayes/scripts/fasta_generate_regions.py \
+		--chunks \
+		--chromosomes {params.chroms} \
+		--bed {params.ref_dir}/bed_files/genome \
+		{input.index} \
+		{params.chunks}
 		"""
 
 ### Rule to do calls
@@ -95,8 +101,8 @@ rule variant_calling_freebayes:
 	input:
 		bam = ALN_DIR + "/PAUL4_WGS.bam",
 		index = ALN_DIR + "/PAUL4_WGS.bam.bai",
-		ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
-		regions = REF_DIR + "/bed_files/genome.Scaffold_{chrom}.region.{i}.bed"
+		ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
+		regions = REF_DIR + "/bed_files/genome.{chrom}.region.{i}.bed"
 	output:
 		OUT_DIR + "/{chrom}/variants.{i}.vcf"
 	params:
@@ -117,8 +123,8 @@ rule variant_calling_freebayes:
 rule concat_vcfs:
 	input:
 		calls = expand(OUT_DIR + "/{{chrom}}/variants.{i}.vcf", i=CHUNKS),
-		index = REF_DIR + "/LHISI_Scaffold_Assembly.fasta.fai"
-	output: OUT_DIR + "/PAUL4_Raw_Scaffold_{chrom}.vcf"
+		index = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta.fai"
+	output: OUT_DIR + "/PAUL4_Raw_{chrom}.vcf"
 	threads:4
 	params:
 		dir = OUT_DIR
@@ -139,13 +145,38 @@ rule concat_vcfs:
 		"""
 
 # rule filter_vcfs:
-### BIG Q HERE: BEST WAY TO FILTER REPEATS AND MAINTAIN MAX DATA
-### NOT ALL REPEATS NEED FILTERING FOR VARIANT CALLING PURPOSES
-### DOES IT MAKE A DIFFERENCE?
+# mask repeats
+# split out into variant and invariant
+# filter variant by normal metrics
+# filter invariant by depth and quality etc.
+
 # rule plink_format:
+# combine variant and invariant per chromosome
+# turn into plink format
+
 # rule plink_ROH:
+# run per chromosome
+
+# rule plink_ROH_combine:
+# combine per chromosome files into single file
+
 # rule psmc_format:
-# rule psmc
-# rule psmc_bootstrap
-# rule H
-# rule ismc
+# take variant
+# combine into single for whole genome
+# turn into psmc format
+
+# rule psmc:
+# run psmc on whole genome
+# stop here to check the number of recombination events and readjust
+
+# rule psmc_bootstrap:
+# bootstrap psmc
+# possibly doesn't need to be parallelised
+
+# rule H:
+# combine variant and invariant
+# generate regions file
+# generate count table for regions of variant and invariant
+
+# rule combine H:
+# combine per chromosome tables into single table for plotting
