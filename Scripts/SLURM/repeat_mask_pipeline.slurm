@@ -14,6 +14,23 @@
 #source ${HOME_DIR}/.bashrc
 eval "$(conda shell.bash hook)"
 
-# Find and run script
-cd /mnt/data/dayhoff/home/u6905905/Daus_WGS_Paper/Scripts
-sh repeat_mask_pipeline.sh
+### Evironment
+cd /mnt/data/dayhoff/home/u6905905/Daus_WGS_Paper
+. ../shell.config
+cd ${SCRATCH_DIR}/References/Annotation
+
+# Download singularity container
+
+singularity pull dfam-tetools-latest.sif docker://dfam/tetools:latest
+
+# Now run repeatmodeler
+
+singularity exec repeatmodeler.sif BuildDatabase -name LHISI_Scaffold_Assembly_Polished
+singularity exec repeatmodeler.sif RepeatModeler -database LHISI_Scaffold_Assembly_Polished -threads 28
+
+# Now use CD-hit to reduce redundancy with the previous run
+
+conda activate cdhit_env
+cat LHISI_Scaffold_Assembly_Polished-families.fa LHISI_Scaffold_Assembly.repeats_filtered.fasta > combined_repeats.fa
+cd-hit-est combined_repeats.fa -c 0.99 -o combined_repeats_clustered.fa
+conda deactivate
