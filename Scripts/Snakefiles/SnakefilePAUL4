@@ -17,15 +17,15 @@ SOFT_DIR = "/mnt/data/dayhoff/home/u6905905/"
 
 ### Modify this line to exclude or include scaffolds as necessary
 ### Only include autosomes for this
-CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
-### CHROMS = ["CM057008.1"] # tester line
+#CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
+CHROMS = ["CM057008.1"] # tester line
 ### Define chunks for calling later
 NCHUNKS = 20
 CHUNKS = list(range(1,NCHUNKS+1))
 
 ### Final rule
 rule all:
-	input: expand(OUT_DIR + "/PAUL4_Raw_{chrom}.vcf",chrom=CHROMS)
+	input: expand(OUT_DIR + "/FILTERED_PAUL4_{chrom}.vcf",chrom=CHROMS)
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
@@ -144,7 +144,65 @@ rule concat_vcfs:
 		rm -rf tmp*_{wildcards.chrom} head_{wildcards.chrom} tail_{wildcards.chrom} {wildcards.chrom}
 		"""
 
-# rule filter_vcfs:
+# Rule to filter vcfs, treating variant and invariant sites separately
+rule filter_vcfs:
+	input: OUT_DIR + "/PAUL4_Raw_{chrom}.vcf"
+	output: OUT_DIR + "/FILTERED_PAUL4_{chrom}.vcf"
+	threads:2
+	params:
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
+
+		# Filter by depth first
+		# This will significantly reduce the burden of later sections
+		# Permissive filter
+
+		### ADD IN STEP TO FILTER REPEATS
+
+		vcftools --vcf {input} \
+		--min-meanDP 15 --max-meanDP 25 \
+		--remove-indels \
+		--recode --recode-INFO-all --out depthfilt_{wildcards.chrom}
+
+		# Split into header, variant, and invariant
+
+		grep "#" depthfilt_{wildcards.chrom}.recode.vcf > {wildcards.chrom}_header
+		grep -v "#" depthfilt_{wildcards.chrom}.recode.vcf > {wildcards.chrom}_tailer
+		rm depthfilt_{wildcards.chrom}.recode.vcf
+
+		grep "0/0\|1/1" {wildcards.chrom}_tailer > {wildcards.chrom}_tmp1
+
+		grep "0/1\|1/0" {wildcards.chrom}_tailer > {wildcards.chrom}_tmp2
+		cat {wildcards.chrom}_header {wildcards.chrom}_tmp2 > variant_depthfilt_{wildcards.chrom}.vcf
+		rm {wildcards.chrom}_tmp2
+
+		rm {wildcards.chrom}_tailer
+
+		# Filter variant VCF, easy part
+
+		vcffilter -f 'AB > 0.2 & AB < 0.8 & QUAL / DP > 0.25' variant_depthfilt_{wildcards.chrom}.vcf | grep -v "#" > {wildcards.chrom}_tmp2
+
+		# These may have been true homozygotes
+		# The imbalanced filtering of het/hom sites due to information imbalance worries me
+		# So I'm recording how much information is lost when hets are filtered
+		# Perhaps I can scale down the number of homozygous sites by a proportional amount to account for this
+		# Or perhaps I can calculate metrics assuming these removed sites were true homozygotes
+
+		NUM_REMAINING=$(cat {wildcards.chrom}_tmp2 | wc -l)
+		NUM_TOTAL=$(grep -v "#" variant_depthfilt_{wildcards.chrom}.vcf | wc -l)
+		echo "{wildcards.chrom}\t${{NUM_REMAINING}}\t${{NUM_TOTAL}}" >> {wildcards.chrom}_het_filtering.log
+
+		# Now cat together, sort
+
+		cat {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2 | sort -k2,2n > {wildcards.chrom}_tmp3
+		rm {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2
+
+		cat {wildcards.chrom}_header {wildcards.chrom}_tmp3 > FILTERED_PAUL4_{wildcards.chrom}.vcf
+		rm {wildcards.chrom}_tmp3 {wildcards.chrom}_header variant_depthfilt_{wildcards.chrom}.vcf
+		"""
+
 # mask repeats
 # split out into variant and invariant
 # filter variant by normal metrics

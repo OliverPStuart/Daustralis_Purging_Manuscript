@@ -21,4 +21,4 @@ cd ${HOME_DIR}
 
 conda activate $HOME_DIR/.conda/envs/paul4_env
 
-snakemake -s SnakefilePAUL4 --cores 46
+snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SnakefilePAUL4 --cores 46
