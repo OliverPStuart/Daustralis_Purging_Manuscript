@@ -7,13 +7,13 @@
 	### Naming convention is {sample}.bam
 ### This snakefile is run using a PBS job submission script which first creates some inputs
 
-HOME_DIR = "/home/147/os4776"
-SCRATCH = "/scratch/rh35/os4776/LHISI_WGS"
-ALN_DIR = SCRATCH + "/Alignments"
-REF = SCRATCH + "/References/LHISI_Scaffold_Assembly.fasta"
-REF_DIR = SCRATCH + "/References"
-OUT_DIR = SCRATCH + "/Analyses/SingleSampleH"
-ANGSD_DIR = HOME_DIR + "/angsd"
+HOME_DIR = "/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI"
+READ_DIR = HOME_DIR + "/Reads/WGS"
+ALN_DIR = HOME_DIR + "/Alignments/WGS"
+REF_DIR = HOME_DIR + "/References"
+OUT_DIR = HOME_DIR + "/Analysis/SingleSampleHEstimation"
+SOFT_DIR = "/mnt/data/dayhoff/home/u6905905/"
+ANGSD_DIR = SOFT_DIR + "/angsd"
 
 ### Get sample names from list file
 ### Also make list of scaffolds to consider

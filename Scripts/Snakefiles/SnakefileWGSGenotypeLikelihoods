@@ -3,23 +3,13 @@
 
 ### Set up environment
 
-### GADI ENV
-HOME_DIR = "/home/147/os4776"
-SCRATCH = "/scratch/rh35/os4776/LHISI_WGS"
-ALN_DIR = SCRATCH + "/Alignments"
-REF = SCRATCH + "/References/LHISI_Scaffold_Assembly.fasta"
-REF_DIR = SCRATCH + "/References"
-OUT_DIR = SCRATCH + "/Analyses/GenotypeLikelihoodROH"
-ANGSD_DIR = HOME_DIR + "/angsd"
-
-### FISHER ENV
-#HOME_DIR = "/home/oliver"
-#SCRATCH = "/home/oliver"
-#ALN_DIR = SCRATCH + "/Alignments"
-#REF = SCRATCH + "/References/LHISI_Scaffold_Assembly.fasta"
-#REF_DIR = SCRATCH + "/References"
-#OUT_DIR = SCRATCH + "/Analyses/GenotypeLikelihoodROH"
-#ANGSD_DIR = HOME_DIR + "/angsd"
+HOME_DIR = "/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI"
+READ_DIR = HOME_DIR + "/Reads/WGS"
+ALN_DIR = HOME_DIR + "/Alignments/WGS"
+REF_DIR = HOME_DIR + "/References"
+OUT_DIR = HOME_DIR + "/Analysis/GenotypeLikelihoodROH"
+SOFT_DIR = "/mnt/data/dayhoff/home/u6905905/"
+ANGSD_DIR = SOFT_DIR + "/angsd"
 
 ### We do this chromosome by chromosome to speed up the process
 ### This also makes handling everything easier, as outputs can be quite large
@@ -74,6 +64,7 @@ rule make_mask:
 		"""
 
 ### Rule to estimate GLs per population per scaffold
+### Needs access to a list of bam files to analyse, one per population, lhip, lhisi, wild
 
 rule estimate_gls:
   input:

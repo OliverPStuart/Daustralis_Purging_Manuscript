@@ -1,10 +1,11 @@
 ### Snakefile for mapping of whole-genome sequencing reads from LHISI project
-### Assumes following directory structure
 
-### ~/
-### ~/Reads
-### ~/Reads/WGS
-### ~/References
+HOME_DIR = "/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI"
+READ_DIR = HOME_DIR + "/Reads/WGS"
+ALN_DIR = HOME_DIR + "/Alignments/WGS"
+REF_DIR = HOME_DIR + "/References"
+OUT_DIR = HOME_DIR + "/Analysis/AnalysingWGSCoverage"
+SOFT_DIR = "/mnt/data/dayhoff/home/u6905905/"
 
 ### All libraries were sequenced twice, so each sample has L001 and L002 files
 ### All sequencing was paired end, so each library has R1 and R2 files
@@ -13,7 +14,7 @@
 ### Get sample names from list file
 ### Expand into results, which for this case is the completed bam index files
 samples = [line.strip() for line in open("wgs_sample_list.txt").readlines()]
-results_pattern = "Alignments/WGS/{sample}.bam.bai"
+results_pattern = OUT_DIR + "/{sample}.regions.bed.gz"
 results = expand(results_pattern,sample=samples)
 
 rule all:
@@ -23,13 +24,13 @@ rule all:
 ### Combine the L001 and L002 reads into one temp file
 rule cat:
 	input:
-		r1_1="Reads/WGS/{sample}_L001_R1.fastq.gz",
-		r1_2="Reads/WGS/{sample}_L002_R1.fastq.gz",
-		r2_1="Reads/WGS/{sample}_L001_R2.fastq.gz",
-		r2_2="Reads/WGS/{sample}_L002_R2.fastq.gz"
+		r1_1= READ_DIR + "/{sample}_L001_R1.fastq.gz",
+		r1_2= READ_DIR + "/{sample}_L002_R1.fastq.gz",
+		r2_1= READ_DIR + "/{sample}_L001_R2.fastq.gz",
+		r2_2= READ_DIR + "/{sample}_L002_R2.fastq.gz"
 	output:
-		r1="Reads/WGS/temp_{sample}_R1.fastq.gz",
-		r2="Reads/WGS/temp_{sample}_R2.fastq.gz"
+		r1= READ_DIR + "/temp_{sample}_R1.fastq.gz",
+		r2= READ_DIR + "/temp_{sample}_R2.fastq.gz"
 	shell:
 		"""
 		cat {input.r1_1} {input.r1_2} > {output.r1}
@@ -43,11 +44,11 @@ rule cat:
 
 rule map:
 	input:
-		ref="References/LHISI_Scaffold_Assembly.fasta",
-		r1="Reads/WGS/temp_{sample}_R1.fastq.gz",
-		r2="Reads/WGS/temp_{sample}_R2.fastq.gz"
+		ref=REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
+		r1=READ_DIR + "/WGS/temp_{sample}_R1.fastq.gz",
+		r2=READ_DIR + "/temp_{sample}_R2.fastq.gz"
 	output:
-		"Alignments/WGS/{sample}.bam"
+		ALN_DIR + "/{sample}.bam"
 	threads: 10
 	shell:
 		"""
@@ -62,9 +63,9 @@ rule map:
 ### Index the bam files
 rule index:
 	input:
-		"Alignments/WGS/{sample}.bam"
+		ALN_DIR + "/{sample}.bam"
 	output:
-		"Alignments/WGS/{sample}.bam.bai"
+		ALN_DIR + "/{sample}.bam.bai"
 	threads: 10
 	shell:
 		"""
@@ -74,10 +75,30 @@ rule index:
 ### Remove the temp files
 rule remove:
 	input:
-		index="Alignments/WGS/{sample}.bam.bai",
-		r1="Reads/WGS/temp_{sample}_R1.fastq.gz",
-		r2="Reads/WGS/temp_{sample}_R2.fastq.gz"
+		index=ALN_DIR + "/{sample}.bam.bai",
+		r1=READ_DIR + "/temp_{sample}_R1.fastq.gz",
+		r2=READ_DIR + "/temp_{sample}_R2.fastq.gz"
 	shell:
 		"""
 		rm {input.r1} {input.r2}
+		"""
+
+### Calculate depths
+rule mosdepth:
+	input:
+		bai=ALN_DIR + "/{sample}.bam.bai",
+		bam=ALN_DIR + "/{sample}.bam"
+	output:results_pattern
+	threads: 10
+	params:
+		out=OUT_DIR
+	shell:
+		"""
+		mosdepth \
+		--threads {threads} \
+		--by 100000 \
+		--no-per-base \
+		--mapq 30 \
+		{params.out}/{wildcards.sample} \
+		{input.bam}
 		"""

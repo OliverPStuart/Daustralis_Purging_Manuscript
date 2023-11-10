@@ -8,7 +8,7 @@
 
 ### May add a rule to estimate recombination map using ismc.
 
-HOME_DIR = "/home/scratch/groups/mikheyev/LHISI"
+HOME_DIR = "/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI"
 READ_DIR = HOME_DIR + "/Reads/WGS"
 ALN_DIR = HOME_DIR + "/Alignments/WGS"
 REF_DIR = HOME_DIR + "/References"
