@@ -143,7 +143,7 @@ rule do_saf:
 		in2 = OUT_DIR + "/{sample}_midDepth_scaffold{scaffold}_check",
 		sites = OUT_DIR + "/{sample}_{depth}Depth_scaffold{scaffold}_nonRepeat",
 		bam = ALN_DIR + "/{sample}.bam",
-		ref = REF
+		ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta"
 	output: OUT_DIR + "/{sample}_{depth}Depth_scaffold{scaffold}.saf.idx"
 	threads: 10
 	params:

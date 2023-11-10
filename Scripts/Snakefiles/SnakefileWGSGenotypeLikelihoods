@@ -69,7 +69,7 @@ rule make_mask:
 rule estimate_gls:
   input:
     list = "{population}_bam_list.txt",
-    ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
+    ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
     mask = OUT_DIR + "/autosome_regions_masked"
   output:
     OUT_DIR + "/{population}_scaffold{scaffold}.beagle.gz"
