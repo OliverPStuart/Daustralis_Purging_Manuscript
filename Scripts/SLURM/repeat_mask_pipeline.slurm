@@ -47,15 +47,15 @@ conda activate repeatmasker_env
 #rename 's/\.masked/\.masked\.fasta/g' 01_simple_out/LHISI_Scaffold_Assembly_Polished*
 
 # round 2: annotate/mask Arthropoda elements sourced from Repbase using output from 1st round of RepeatMasker
-RepeatMasker -pa 16 -a -e ncbi -dir 02_arthropoda_out -nolow \
--species arthropoda 01_simple_out/LHISI_Scaffold_Assembly_Polished.simple_mask.masked.fasta 2>&1 | tee logs/02_arthropodamask.log
+#RepeatMasker -pa 16 -a -e ncbi -dir 02_arthropoda_out -nolow \
+#-species arthropoda 01_simple_out/LHISI_Scaffold_Assembly_Polished.simple_mask.masked.fasta 2>&1 | tee logs/02_arthropodamask.log
 # round 2: rename outputs
-rename 's/simple_mask\.masked\.fasta/arthropoda_mask/g' 02_arthropoda_out/LHISI_Scaffold_Assembly_Polished*
-rename 's/\.masked/\.masked\.fasta/g' 02_arthropoda_out/LHISI_Scaffold_Assembly_Polished*
+#rename 's/simple_mask\.masked\.fasta/arthropoda_mask/g' 02_arthropoda_out/LHISI_Scaffold_Assembly_Polished*
+#rename 's/\.masked/\.masked\.fasta/g' 02_arthropoda_out/LHISI_Scaffold_Assembly_Polished*
 
-# round 3: annotate/mask known elements sourced from species-specific de novo repeat library
+# round 3: annotate/mask known elements sourced from species-specific de novo repeat l'ibrary
 RepeatMasker -pa 16 -a -e ncbi -dir 03_known_out -nolow \
--lib RM_3767039.TueOct241448172023/consensi.fa.classified.known \
+-lib consensi.fa.classified.known \
 02_arthropoda_out/LHISI_Scaffold_Assembly_Polished.arthropoda_mask.masked.fasta 2>&1 | tee logs/03_knownmask.log
 # round 3: rename outputs
 rename 's/arthropoda_mask\.masked\.fasta/known_mask/g' 03_known_out/LHISI_Scaffold_Assembly_Polished*
@@ -63,7 +63,7 @@ rename 's/\.masked/\.masked\.fasta/g' 03_known_out/LHISI_Scaffold_Assembly_Polis
 
 # round 4: annotate/mask unknown elements sourced from species-specific de novo repeat library
 RepeatMasker -pa 16 -a -e ncbi -dir 04_unknown_out -nolow \
--lib RM_3767039.TueOct241448172023/consensi.fa.classified.unknown \
+-lib consensi.fa.classified.unknown \
 03_known_out/LHISI_Scaffold_Assembly_Polished.known_mask.masked.fasta 2>&1 | tee logs/04_unknownmask.log
 # round 4: rename outputs
 rename 's/known_mask\.masked\.fasta/unknown_mask/g' 04_unknown_out/LHISI_Scaffold_Assembly_Polished*
