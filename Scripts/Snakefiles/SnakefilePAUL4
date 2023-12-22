@@ -17,15 +17,17 @@ SOFT_DIR = "/mnt/data/dayhoff/home/u6905905/"
 
 ### Modify this line to exclude or include scaffolds as necessary
 ### Only include autosomes for this
-#CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
-CHROMS = ["CM057008.1"] # tester line
+CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
+#CHROMS = ["CM057008.1"] # tester line
 ### Define chunks for calling later
-NCHUNKS = 20
+NCHUNKS = 30
 CHUNKS = list(range(1,NCHUNKS+1))
 
 ### Final rule
 rule all:
-	input: expand(OUT_DIR + "/FILTERED_PAUL4_{chrom}.vcf",chrom=CHROMS)
+	input:
+		OUT_DIR + "/GENOME_WIDE_H.txt",
+		expand(OUT_DIR + "/PAUL4_{chrom}.bed",chrom=CHROMS)
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
@@ -119,12 +121,77 @@ rule variant_calling_freebayes:
 		{input.bam} > {output}
 		"""
 
-### Rule to concat calls into chromosome specific directories
+# Rule to filter vcfs, treating variant and invariant sites separately
+rule filter_vcfs:
+	input: OUT_DIR + "/{chrom}/variants.{i}.vcf"
+	output:
+		out_het = OUT_DIR + "/{chrom}/variants.{i}.het.vcf",
+		out_hom = OUT_DIR + "/{chrom}/variants.{i}.hom.vcf",
+	threads:2
+	params:
+		dir = OUT_DIR,
+		ref_dir = REF_DIR
+	shell:
+		"""
+		cd {params.dir}
+
+		# Intersect specific bedfile with repeats bed file to reduce file-reading for vcftools
+
+		bedtools intersect -a {params.ref_dir}/bed_files/genome.{wildcards.chrom}.region.{wildcards.i}.bed -b {params.ref_dir}/Annotation/repeats.bed > filter_{wildcards.chrom}_{wildcards.i}.bed
+
+		# Filter by depth first
+		# This will significantly reduce the burden of later sections
+		# Permissive filter
+
+		vcftools --vcf {input} \
+		--min-meanDP 15 --max-meanDP 25 \
+		--remove-indels \
+		--exclude-bed filter_{wildcards.chrom}_{wildcards.i}.bed \
+		--recode --recode-INFO-all --out depthfilt_{wildcards.chrom}_{wildcards.i}
+
+		rm filter_{wildcards.chrom}_{wildcards.i}.bed
+
+		# Split into header and tailer
+
+		grep "#" depthfilt_{wildcards.chrom}_{wildcards.i}.recode.vcf > {wildcards.chrom}_{wildcards.i}_header
+		grep -v "#" depthfilt_{wildcards.chrom}_{wildcards.i}.recode.vcf > {wildcards.chrom}_{wildcards.i}_tailer
+		rm depthfilt_{wildcards.chrom}_{wildcards.i}.recode.vcf
+
+		# Split tailer into hom and het
+
+		grep "0/0\|1/1\|0|0\|1|1" {wildcards.chrom}_{wildcards.i}_tailer > {wildcards.chrom}_{wildcards.i}_hom
+		grep "0/1\|1/0\|0|1\|1|0" {wildcards.chrom}_{wildcards.i}_tailer > {wildcards.chrom}_{wildcards.i}_het
+
+		# Make full hom vcf
+
+		cat {wildcards.chrom}_{wildcards.i}_header {wildcards.chrom}_{wildcards.i}_hom > {output.out_hom}
+
+		# Get full het vcf for filtering
+
+		cat {wildcards.chrom}_{wildcards.i}_header {wildcards.chrom}_{wildcards.i}_het > {wildcards.chrom}_{wildcards.i}_het.vcf
+
+		# Remove tmp files
+
+		rm {wildcards.chrom}_{wildcards.i}_tailer {wildcards.chrom}_{wildcards.i}_het {wildcards.chrom}_{wildcards.i}_hom
+
+		# Filter variant VCF, easy part
+
+		vcffilter -f 'AB > 0.2 & AB < 0.8 & QUAL / DP > 0.25' {wildcards.chrom}_{wildcards.i}_het.vcf | grep -v "#" > {output.out_het}
+
+		# Remove other tmp files
+
+		rm {wildcards.chrom}_{wildcards.i}_het.vcf
+		"""
+
+# Rule to concat calls into chromosome specific files
 rule concat_vcfs:
 	input:
-		calls = expand(OUT_DIR + "/{{chrom}}/variants.{i}.vcf", i=CHUNKS),
+		calls_het = expand(OUT_DIR + "/{{chrom}}/variants.{i}.het.vcf", i=CHUNKS),
+		calls_hom = expand(OUT_DIR + "/{{chrom}}/variants.{i}.hom.vcf", i=CHUNKS),
 		index = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta.fai"
-	output: OUT_DIR + "/PAUL4_Raw_{chrom}.vcf"
+	output:
+		out_het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
+		out_hom = OUT_DIR + "/PAUL4_Hom_{chrom}.vcf"
 	threads:4
 	params:
 		dir = OUT_DIR
@@ -134,86 +201,109 @@ rule concat_vcfs:
 
 		# We have to separate processing the header into two lines to avoid 141 error
 		# This occurs when a pipe is still streaming after the following command exits
-		cat {input.calls} | awk '/#/' > tmp2_{wildcards.chrom}
+
+		cat {input.calls_hom} | awk '/#/' > tmp2_{wildcards.chrom}
 		awk '1;/CHROM/{{exit}}' tmp2_{wildcards.chrom} >> head_{wildcards.chrom}
 
-		cat {input.calls} | awk '!/#/' | sort -k2,2n > tail_{wildcards.chrom}
+		cat {input.calls_het} | awk '!/#/' | sort -k2,2n > het_{wildcards.chrom}
+		cat head_{wildcards.chrom} het_{wildcards.chrom} | vcfuniq > {output.out_het}
 
-		cat head_{wildcards.chrom} tail_{wildcards.chrom} | vcfuniq > {output}
+		cat {input.calls_hom} | awk '!/#/' | sort -k2,2n > hom_{wildcards.chrom}
+		cat head_{wildcards.chrom} hom_{wildcards.chrom} | vcfuniq > {output.out_hom}
 
-		rm -rf tmp*_{wildcards.chrom} head_{wildcards.chrom} tail_{wildcards.chrom} {wildcards.chrom}
+		rm tmp2_{wildcards.chrom} head_{wildcards.chrom} het_{wildcards.chrom} hom_{wildcards.chrom}
+
+		rm -rf {wildcards.chrom}
 		"""
 
-# Rule to filter vcfs, treating variant and invariant sites separately
-rule filter_vcfs:
-	input: OUT_DIR + "/PAUL4_Raw_{chrom}.vcf"
-	output: OUT_DIR + "/FILTERED_PAUL4_{chrom}.vcf"
-	threads:2
+## Rule to get table of per-scaffold heterozygosity in sliding windows
+rule H:
+	input:
+		het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
+		hom = OUT_DIR + "/PAUL4_Hom_{chrom}.vcf"
+	output: OUT_DIR + "/H_count_{chrom}.txt"
+	params:
+		ref_dir = REF_DIR,
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
+
+		# Get length of scaffold
+		cut -f1,2 {params.ref_dir}/LHISI_Scaffold_Assembly_Polished.fasta.fai | grep {wildcards.chrom} > {wildcards.chrom}_length
+
+		# Make bedfile
+		bedtools makewindows -g {wildcards.chrom}_length -w 1000000 -s 500000 > {wildcards.chrom}_windows.bed
+
+		# Get file of site positions for variant, invariant
+		awk '!/#/' {input.het} | cut -f1,2 | awk '{{print $1"\t"$2-1"\t"$2}}'	> {wildcards.chrom}_het.bed
+		awk '!/#/' {input.hom} | cut -f1,2 | awk '{}{print $1"\t"$2-1"\t"$2}}'	> {wildcards.chrom}_hom.bed
+
+		# Now we intersect each to get the count of variant and invariant sites per window
+		bedtools intersect \
+		-a {wildcards.chrom}_windows.bed \
+		-b {wildcards.chrom}_het.bed \
+		-c | \
+		cut -f4 > {wildcards.chrom}_het_count
+
+		bedtools intersect \
+		-a {wildcards.chrom}_windows.bed \
+		-b {wildcards.chrom}_hom.bed \
+		-c > {wildcards.chrom}_hom_count
+
+		paste {wildcards.chrom}_hom_count {wildcards.chrom}_het_count > {output}
+
+		rm {wildcards.chrom}_*bed {wildcards.chrom}_*count {wildcards.chrom}_length
+		"""
+
+rule combine_H:
+	input: expand(OUT_DIR + "/H_count_{chrom}.txt",chrom=CHROMS)
+	output: OUT_DIR + "/GENOME_WIDE_H.txt"
 	params:
 		dir = OUT_DIR
 	shell:
 		"""
 		cd {params.dir}
 
-		# Filter by depth first
-		# This will significantly reduce the burden of later sections
-		# Permissive filter
+		cat {input} > {output}
 
-		### ADD IN STEP TO FILTER REPEATS
-
-		vcftools --vcf {input} \
-		--min-meanDP 15 --max-meanDP 25 \
-		--remove-indels \
-		--recode --recode-INFO-all --out depthfilt_{wildcards.chrom}
-
-		# Split into header, variant, and invariant
-
-		grep "#" depthfilt_{wildcards.chrom}.recode.vcf > {wildcards.chrom}_header
-		grep -v "#" depthfilt_{wildcards.chrom}.recode.vcf > {wildcards.chrom}_tailer
-		rm depthfilt_{wildcards.chrom}.recode.vcf
-
-		grep "0/0\|1/1" {wildcards.chrom}_tailer > {wildcards.chrom}_tmp1
-
-		grep "0/1\|1/0" {wildcards.chrom}_tailer > {wildcards.chrom}_tmp2
-		cat {wildcards.chrom}_header {wildcards.chrom}_tmp2 > variant_depthfilt_{wildcards.chrom}.vcf
-		rm {wildcards.chrom}_tmp2
-
-		rm {wildcards.chrom}_tailer
-
-		# Filter variant VCF, easy part
-
-		vcffilter -f 'AB > 0.2 & AB < 0.8 & QUAL / DP > 0.25' variant_depthfilt_{wildcards.chrom}.vcf | grep -v "#" > {wildcards.chrom}_tmp2
-
-		# These may have been true homozygotes
-		# The imbalanced filtering of het/hom sites due to information imbalance worries me
-		# So I'm recording how much information is lost when hets are filtered
-		# Perhaps I can scale down the number of homozygous sites by a proportional amount to account for this
-		# Or perhaps I can calculate metrics assuming these removed sites were true homozygotes
-
-		NUM_REMAINING=$(cat {wildcards.chrom}_tmp2 | wc -l)
-		NUM_TOTAL=$(grep -v "#" variant_depthfilt_{wildcards.chrom}.vcf | wc -l)
-		echo "{wildcards.chrom}\t${{NUM_REMAINING}}\t${{NUM_TOTAL}}" >> {wildcards.chrom}_het_filtering.log
-
-		# Now cat together, sort
-
-		cat {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2 | sort -k2,2n > {wildcards.chrom}_tmp3
-		rm {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2
-
-		cat {wildcards.chrom}_header {wildcards.chrom}_tmp3 > FILTERED_PAUL4_{wildcards.chrom}.vcf
-		rm {wildcards.chrom}_tmp3 {wildcards.chrom}_header variant_depthfilt_{wildcards.chrom}.vcf
+		rm {input}
 		"""
 
-# mask repeats
-# split out into variant and invariant
-# filter variant by normal metrics
-# filter invariant by depth and quality etc.
+rule plink_ROH_format:
+	input:
+		het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
+		hom = OUT_DIR + "/PAUL4_Hom_{chrom}.vcf"
+	output: OUT_DIR + "/PAUL4_{chrom}.bed"
+	params:
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
 
-# rule plink_format:
-# combine variant and invariant per chromosome
-# turn into plink format
+		#Get header
+		cat {input.het} | awk '/#/' > tmp2_{wildcards.chrom}
+		awk '1;/CHROM/{{exit}}' tmp2_{wildcards.chrom} >> head_{wildcards.chrom}
 
-# rule plink_ROH:
+		# Get tail
+		cat {input.het} {input.hom} | awk '!/#/' | sort -k2,2n > tail_{wildcards.chrom}
+
+		# Cat into single vcf
+		cat head_{wildcards.chrom} tail_{wildcards.chrom} > full_{wildcards.chrom}.vcf
+
+		# Clean up tmp outputs
+		rm tmp2_{wildcards.chrom} tail_{wildcards.chrom} head_{wildcards.chrom}
+
+		# Make plink format
+		plink --make-bed --keep-allele-order --double-id --allow-extra-chr --vcf full_{wildcards.chrom}.vcf --out PAUL4_{wildcards.chrom}
+
+		# Clean up tmp outputs
+		rm full_{wildcards.chrom}.vcf
+		"""
+
 # run per chromosome
+# Taken from JRobinson github
+# ${PLINK} --bfile ${VCF%.vcf.gz} --out ${VCF%.vcf.gz}_ROH --homozyg
 
 # rule plink_ROH_combine:
 # combine per chromosome files into single file
@@ -230,11 +320,3 @@ rule filter_vcfs:
 # rule psmc_bootstrap:
 # bootstrap psmc
 # possibly doesn't need to be parallelised
-
-# rule H:
-# combine variant and invariant
-# generate regions file
-# generate count table for regions of variant and invariant
-
-# rule combine H:
-# combine per chromosome tables into single table for plotting
