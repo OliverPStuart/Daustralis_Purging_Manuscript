@@ -1,10 +1,8 @@
 ### Snakefile for PAUL4 analysis. The pipeline takes reads, maps and
 ### deduplicates them, calls variants in parallel with FreeBayes, and filters
-### them. Then it converts the filtered vcfs into psmc and plink formats. It
-### takes the plink format and identifies ROH across a few different parameter
-### settings. It takes the psmc format and performs psmc for the whole genome
-### and then performs 100 bootstraps. Finally, it calculates H for each
-### scaffold.
+### them. Then, it measures genome wide H in 1mbp bins with 500kbp sliding windows,
+### estimates ROH coordinates with plink and bcftools, and performs a psmc
+### analysis with 100 bootstraps.
 
 ### May add a rule to estimate recombination map using ismc.
 
@@ -13,7 +11,8 @@ READ_DIR = HOME_DIR + "/Reads/WGS"
 ALN_DIR = HOME_DIR + "/Alignments/WGS"
 REF_DIR = HOME_DIR + "/References"
 OUT_DIR = HOME_DIR + "/Analysis/PAUL4"
-SOFT_DIR = "/mnt/data/dayhoff/home/u6905905/"
+SOFT_DIR = "/mnt/data/dayhoff/home/u6905905"
+BCFTOOLS = SOFT_DIR + "/bcftools/bcftools"
 
 ### Modify this line to exclude or include scaffolds as necessary
 ### Only include autosomes for this
@@ -27,7 +26,10 @@ CHUNKS = list(range(1,NCHUNKS+1))
 rule all:
 	input:
 		OUT_DIR + "/GENOME_WIDE_H.txt",
-		expand(OUT_DIR + "/PAUL4_{chrom}.bed",chrom=CHROMS)
+		OUT_DIR + "/GENOME_WIDE_ROH_PLINK.txt",
+                OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
+                OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
+                OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt"
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
@@ -126,7 +128,6 @@ rule filter_vcfs:
 	input: OUT_DIR + "/{chrom}/variants.{i}.vcf"
 	output:
 		out_het = OUT_DIR + "/{chrom}/variants.{i}.het.vcf",
-		out_hom = OUT_DIR + "/{chrom}/variants.{i}.hom.vcf",
 	threads:2
 	params:
 		dir = OUT_DIR,
@@ -172,7 +173,7 @@ rule filter_vcfs:
 
 		# Remove tmp files
 
-		rm {wildcards.chrom}_{wildcards.i}_tailer {wildcards.chrom}_{wildcards.i}_het {wildcards.chrom}_{wildcards.i}_hom
+		rm {wildcards.chrom}_{wildcards.i}_tailer {wildcards.chrom}_{wildcards.i}_het {wildcards.chrom}_{wildcards.i}_hom {wildcards.chrom}_{wildcards.i}_header
 
 		# Filter variant VCF, easy part
 
@@ -183,7 +184,7 @@ rule filter_vcfs:
 		rm {wildcards.chrom}_{wildcards.i}_het.vcf
 		"""
 
-# Rule to concat calls into chromosome specific files
+## Rule to concat calls into chromosome specific directories
 rule concat_vcfs:
 	input:
 		calls_het = expand(OUT_DIR + "/{{chrom}}/variants.{i}.het.vcf", i=CHUNKS),
@@ -211,9 +212,7 @@ rule concat_vcfs:
 		cat {input.calls_hom} | awk '!/#/' | sort -k2,2n > hom_{wildcards.chrom}
 		cat head_{wildcards.chrom} hom_{wildcards.chrom} | vcfuniq > {output.out_hom}
 
-		rm tmp2_{wildcards.chrom} head_{wildcards.chrom} het_{wildcards.chrom} hom_{wildcards.chrom}
-
-		rm -rf {wildcards.chrom}
+		rm head_{wildcards.chrom} het_{wildcards.chrom} hom_{wildcards.chrom} tmp2_{wildcards.chrom}
 		"""
 
 ## Rule to get table of per-scaffold heterozygosity in sliding windows
@@ -237,7 +236,7 @@ rule H:
 
 		# Get file of site positions for variant, invariant
 		awk '!/#/' {input.het} | cut -f1,2 | awk '{{print $1"\t"$2-1"\t"$2}}'	> {wildcards.chrom}_het.bed
-		awk '!/#/' {input.hom} | cut -f1,2 | awk '{}{print $1"\t"$2-1"\t"$2}}'	> {wildcards.chrom}_hom.bed
+		awk '!/#/' {input.hom} | cut -f1,2 | awk '{{print $1"\t"$2-1"\t"$2}}'	> {wildcards.chrom}_hom.bed
 
 		# Now we intersect each to get the count of variant and invariant sites per window
 		bedtools intersect \
@@ -256,6 +255,7 @@ rule H:
 		rm {wildcards.chrom}_*bed {wildcards.chrom}_*count {wildcards.chrom}_length
 		"""
 
+# Rule to combine H estimates per chromosome into single table for analysis
 rule combine_H:
 	input: expand(OUT_DIR + "/H_count_{chrom}.txt",chrom=CHROMS)
 	output: OUT_DIR + "/GENOME_WIDE_H.txt"
@@ -270,6 +270,7 @@ rule combine_H:
 		rm {input}
 		"""
 
+# Rule to convert file to plink format
 rule plink_ROH_format:
 	input:
 		het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
@@ -301,12 +302,97 @@ rule plink_ROH_format:
 		rm full_{wildcards.chrom}.vcf
 		"""
 
-# run per chromosome
-# Taken from JRobinson github
-# ${PLINK} --bfile ${VCF%.vcf.gz} --out ${VCF%.vcf.gz}_ROH --homozyg
+# Rule to run plink ROH analysis on all chromosome files separately
+rule plink_ROH:
+	input:
+		OUT_DIR + "/PAUL4_{chrom}.bed"
+	output: OUT_DIR + "/PAUL4_{chrom}.hom"
+	params:
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
 
-# rule plink_ROH_combine:
-# combine per chromosome files into single file
+		plink \
+		--bfile PAUL4_{wildcards.chrom} \
+		--out PAUL4_{wildcards.chrom} \
+		--allow-extra-chr \
+		--homozyg
+		"""
+
+rule plink_ROH_combine:
+	input: 
+		expand(OUT_DIR + "/PAUL4_{chrom}.hom",chrom=CHROMS)
+	output: OUT_DIR + "/GENOME_WIDE_ROH_PLINK.txt"
+	params:
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
+
+		cat PAUL4_*.hom | sort -k1,1 | uniq > {output}
+
+		rm *bed *bim *hom* *log *nosex *fam
+		"""
+
+rule bcftools_roh:
+	input:
+		het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
+		hom = OUT_DIR + "/PAUL4_Hom_{chrom}.vcf"
+	output:
+		o04 = OUT_DIR + "/{chrom}_ROH_04.txt",
+		o05 = OUT_DIR + "/{chrom}_ROH_05.txt",
+		o06 = OUT_DIR + "/{chrom}_ROH_06.txt"
+	params:
+		dir = OUT_DIR,
+		bcftools = BCFTOOLS
+	shell:
+		"""
+		cd {params.dir}
+		
+		grep "#" {input.het} > {wildcards.chrom}_head
+		grep -v "#" {input.het} > {wildcards.chrom}_tmp1
+		grep -v "#" {input.hom} > {wildcards.chrom}_tmp2
+		
+		cat {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2 | sort -k2,2n > {wildcards.chrom}_tail
+		cat {wildcards.chrom}_head {wildcards.chrom}_tail > PAUL4_BOTH_{wildcards.chrom}.vcf
+		
+		rm {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2 {wildcards.chrom}_head {wildcards.chrom}_tail
+		
+		{params.bcftools} roh --AF-dflt 0.4 -G 30 -o {wildcards.chrom}_tmp_o04  PAUL4_BOTH_{wildcards.chrom}.vcf
+		{params.bcftools} roh --AF-dflt 0.5 -G 30 -o {wildcards.chrom}_tmp_o05 PAUL4_BOTH_{wildcards.chrom}.vcf
+		{params.bcftools} roh --AF-dflt 0.6 -G 30 -o {wildcards.chrom}_tmp_o06 PAUL4_BOTH_{wildcards.chrom}.vcf
+		
+		rm PAUL4_BOTH_{wildcards.chrom}.vcf
+
+		grep RG {wildcards.chrom}_tmp_o04 | sed 's/# //g' | cut -f3- | sed 's/\[[0-9]\]//g' | sed 's/ //g' > {output.o04}
+		grep RG {wildcards.chrom}_tmp_o05 | sed 's/# //g' | cut -f3- | sed 's/\[[0-9]\]//g' | sed 's/ //g' >{output.o05}
+		grep RG {wildcards.chrom}_tmp_o06 | sed 's/# //g' | cut -f3- | sed 's/\[[0-9]\]//g' | sed 's/ //g' > {output.o06}
+
+		rm {wildcards.chrom}_tmp_o04 {wildcards.chrom}_tmp_o05 {wildcards.chrom}_tmp_o06
+		"""
+
+rule bctools_roh_combine:
+	input:
+		i04 = expand(OUT_DIR + "/{chrom}_ROH_04.txt",chrom=CHROMS),
+		i05 = expand(OUT_DIR + "/{chrom}_ROH_05.txt",chrom=CHROMS),
+		i06 = expand(OUT_DIR + "/{chrom}_ROH_06.txt",chrom=CHROMS)
+	output:
+		o04 = OUT_DIR + "GENOME_WIDE_ROH_04_BCFTOOLS.txt",
+		o05 = OUT_DIR + "GENOME_WIDE_ROH_05_BCFTOOLS.txt",
+		o06 = OUT_DIR + "GENOME_WIDE_ROH_06_BCFTOOLS.txt"
+	params:
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
+		
+		cat {input.i04} | sort | uniq > {output.o04}
+		cat {input.i05} | sort | uniq > {output.o05}
+		cat {input.i06} | sort | uniq > {output.o06}
+		
+		rm {input.i04} {input.i05} {input.i06}
+		"""
 
 # rule psmc_format:
 # take variant

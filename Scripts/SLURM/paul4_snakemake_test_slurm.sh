@@ -2,9 +2,9 @@
 #SBATCH --job-name=paul4_snakemake_test
 #
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=48
-#SBATCH --time=48:00:00
-#SBATCH --mem=256G
+#SBATCH --cpus-per-task=72
+#SBATCH --time=72:00:00
+#SBATCH --mem=64G
 #SBATCH --mail-user=u6905905@anu.edu.au
 #SBATCH --mail-type=FAIL,END
 #SBATCH --output=job_%j.out
@@ -21,4 +21,5 @@ cd ${HOME_DIR}
 
 conda activate $HOME_DIR/.conda/envs/paul4_env
 
+snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SnakefilePAUL4 --cores 46 --unlock
 snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SnakefilePAUL4 --cores 46
