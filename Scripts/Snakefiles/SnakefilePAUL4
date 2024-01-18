@@ -408,17 +408,17 @@ rule psmc_format_single:
 		cd {params.dir}
 
 		# Get fasta for chromosome
-		samtools faidx {params.ref_dir}/LHISI_Scaffold_Assembly_Polished.fasta {wildcards.chrom} > tmp_{chrom}.fasta
+		samtools faidx {params.ref_dir}/LHISI_Scaffold_Assembly_Polished.fasta {wildcards.chrom} > tmp_{wildcards.chrom}.fasta
 
 		# Gzip and tabix vcf
 		bgzip {input}
 		tabix {input}.gz
 
 		# Get consensus fasta
-		cat tmp_{chrom}.fasta | {params.bcftools} consensus -I {input}.gz > {wildcards.chrom}_Het_Consensus.fasta
+		cat tmp_{wildcards.chrom}.fasta | {params.bcftools} consensus -I {input}.gz > {wildcards.chrom}_Het_Consensus.fasta
 
 		# Clean up
-		rm tmp_{chrom}.fasta
+		rm tmp_{wildcards.chrom}.fasta
 		"""
 
 # Rule to combine consensus fasta files into one file and turn into psmc format
