@@ -30,7 +30,7 @@ rule all:
 		OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt",
-		OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
+		OUT_DIR + "/PAUL4_All_Het_Consensus.psmc"
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
@@ -429,7 +429,7 @@ rule psmc_format_single:
 		cat tmp_{wildcards.chrom}.fasta | {params.bcftools} consensus -I {input}.gz > {wildcards.chrom}_Het_Consensus.fasta
 
 		# Clean up
-		rm tmp_{wildcards.chrom}.fasta
+		rm tmp_{wildcards.chrom}.fasta {input}.gz.tbi
 		"""
 
 # Rule to combine consensus fasta files into one file and turn into psmc format
@@ -437,7 +437,7 @@ rule psmc_format_combined:
 	input: expand(OUT_DIR + "/{chrom}_Het_Consensus.fasta",chrom=CHROMS)
 	output: OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
 	params:
-		dir = OUT_DIR
+		dir = OUT_DIR,
 		software_dir = SOFT_DIR
 	shell:
 		"""
@@ -450,12 +450,22 @@ rule psmc_format_combined:
 		{params.software_dir}/psmc/utils/fq2psmcfa tmp_all.fasta > {output}
 
 		# Clean up
-		rm tmp_all.fasta
+		rm tmp_all.fasta rm CM*Consensus.fasta
 		"""
 
-# rule psmc:
-# run psmc on whole genome
-# stop here to check the number of recombination events and readjust
+## Rule to run single PSMC instance, at first to test recombination events
+rule psmc:
+	input: OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
+	output: OUT_DIR + "/PAUL4_All_Het_Consensus.psmc"
+	params:
+		software_dir = SOFT_DIR,
+		dir = OUT_DIR
+	threads: 4
+	shell:
+		"""
+		{params.software_dir}/psmc/psmc -N25 -t15 -r5 -p "4+25*2+4+6" -o {output} {input}
+		"""
+
 
 # rule psmc_bootstrap:
 # bootstrap psmc
