@@ -30,7 +30,7 @@ rule all:
 		OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt",
-		expand(OUT_DIR + "/{chrom}_Het_Consensus.fasta",chrom=CHROMS)
+		OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
@@ -251,12 +251,14 @@ rule H:
 		-b {wildcards.chrom}_hom.bed \
 		-c > {wildcards.chrom}_hom_count
 
+		# And paste them together into one table
 		paste {wildcards.chrom}_hom_count {wildcards.chrom}_het_count > {output}
 
+		# And clean up
 		rm {wildcards.chrom}_*bed {wildcards.chrom}_*count {wildcards.chrom}_length
 		"""
 
-# Rule to combine H estimates per chromosome into single table for analysis
+## Rule to combine H estimates per chromosome into single table for analysis
 rule combine_H:
 	input: expand(OUT_DIR + "/H_count_{chrom}.txt",chrom=CHROMS)
 	output: OUT_DIR + "/GENOME_WIDE_H.txt"
@@ -271,7 +273,7 @@ rule combine_H:
 		rm {input}
 		"""
 
-# Rule to convert file to plink format
+## Rule to convert file to plink format
 rule plink_ROH_format:
 	input:
 		het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
@@ -303,7 +305,7 @@ rule plink_ROH_format:
 		rm full_{wildcards.chrom}.vcf
 		"""
 
-# Rule to run plink ROH analysis on all chromosome files separately
+## Rule to run plink ROH analysis on all chromosome files separately
 rule plink_ROH:
 	input:
 		OUT_DIR + "/PAUL4_{chrom}.bed"
@@ -321,6 +323,7 @@ rule plink_ROH:
 		--homozyg
 		"""
 
+## Rule to combine plink ROH estimates into one table
 rule plink_ROH_combine:
 	input:
 		expand(OUT_DIR + "/PAUL4_{chrom}.hom",chrom=CHROMS)
@@ -351,28 +354,36 @@ rule bcftools_roh:
 		"""
 		cd {params.dir}
 
+		# Get head and het/hom tails
 		grep "#" {input.het} > {wildcards.chrom}_head
 		grep -v "#" {input.het} > {wildcards.chrom}_tmp1
 		grep -v "#" {input.hom} > {wildcards.chrom}_tmp2
 
+		# Combine het and hom tails, then cat into single vcf
 		cat {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2 | sort -k2,2n > {wildcards.chrom}_tail
 		cat {wildcards.chrom}_head {wildcards.chrom}_tail > PAUL4_BOTH_{wildcards.chrom}.vcf
 
+		# Clean up
 		rm {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2 {wildcards.chrom}_head {wildcards.chrom}_tail
 
+		# Perform bcftools ROH estimation with three AF settings
 		{params.bcftools} roh --AF-dflt 0.4 -G 30 -o {wildcards.chrom}_tmp_o04  PAUL4_BOTH_{wildcards.chrom}.vcf
 		{params.bcftools} roh --AF-dflt 0.5 -G 30 -o {wildcards.chrom}_tmp_o05 PAUL4_BOTH_{wildcards.chrom}.vcf
 		{params.bcftools} roh --AF-dflt 0.6 -G 30 -o {wildcards.chrom}_tmp_o06 PAUL4_BOTH_{wildcards.chrom}.vcf
 
+		# Clean up
 		rm PAUL4_BOTH_{wildcards.chrom}.vcf
 
+		# Clean up table
 		grep RG {wildcards.chrom}_tmp_o04 | sed 's/# //g' | cut -f3- | sed 's/\[[0-9]\]//g' | sed 's/ //g' > {output.o04}
 		grep RG {wildcards.chrom}_tmp_o05 | sed 's/# //g' | cut -f3- | sed 's/\[[0-9]\]//g' | sed 's/ //g' >{output.o05}
 		grep RG {wildcards.chrom}_tmp_o06 | sed 's/# //g' | cut -f3- | sed 's/\[[0-9]\]//g' | sed 's/ //g' > {output.o06}
 
+		# Clean up
 		rm {wildcards.chrom}_tmp_o04 {wildcards.chrom}_tmp_o05 {wildcards.chrom}_tmp_o06
 		"""
 
+## Rule to combine bcftools ROH estimates into single table
 rule bctools_roh_combine:
 	input:
 		i04 = expand(OUT_DIR + "/{chrom}_ROH_04.txt",chrom=CHROMS),
@@ -395,7 +406,7 @@ rule bctools_roh_combine:
 		rm {input.i04} {input.i05} {input.i06}
 		"""
 
-# Rule to get individual chromosome vcf files into consensus fasta files
+## Rule to get individual chromosome vcf files into consensus fasta files
 rule psmc_format_single:
 	input: OUT_DIR + "/PAUL4_Het_{chrom}.vcf"
 	output: OUT_DIR + "/{chrom}_Het_Consensus.fasta"
@@ -422,10 +433,25 @@ rule psmc_format_single:
 		"""
 
 # Rule to combine consensus fasta files into one file and turn into psmc format
-# rule psmc_format_combined:
-# take variant
-# combine into single for whole genome
-# turn into psmc format
+rule psmc_format_combined:
+	input: expand(OUT_DIR + "/{chrom}_Het_Consensus.fasta",chrom=CHROMS)
+	output: OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
+	params:
+		dir = OUT_DIR
+		software_dir = SOFT_DIR
+	shell:
+		"""
+		cd {params.dir}
+
+		# Make combined fasta
+		cat {input} > tmp_all.fasta
+
+		# Turn into psmc format
+		{params.software_dir}/psmc/utils/fq2psmcfa tmp_all.fasta > {output}
+
+		# Clean up
+		rm tmp_all.fasta
+		"""
 
 # rule psmc:
 # run psmc on whole genome
