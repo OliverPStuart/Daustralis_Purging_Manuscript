@@ -27,9 +27,10 @@ rule all:
 	input:
 		OUT_DIR + "/GENOME_WIDE_H.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_PLINK.txt",
-                OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
-                OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
-                OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt"
+		OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
+		OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
+		OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt",
+		expand(OUT_DIR + "/{chrom}_Het_Consensus.fasta",chrom=CHROMS)
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
@@ -321,7 +322,7 @@ rule plink_ROH:
 		"""
 
 rule plink_ROH_combine:
-	input: 
+	input:
 		expand(OUT_DIR + "/PAUL4_{chrom}.hom",chrom=CHROMS)
 	output: OUT_DIR + "/GENOME_WIDE_ROH_PLINK.txt"
 	params:
@@ -349,20 +350,20 @@ rule bcftools_roh:
 	shell:
 		"""
 		cd {params.dir}
-		
+
 		grep "#" {input.het} > {wildcards.chrom}_head
 		grep -v "#" {input.het} > {wildcards.chrom}_tmp1
 		grep -v "#" {input.hom} > {wildcards.chrom}_tmp2
-		
+
 		cat {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2 | sort -k2,2n > {wildcards.chrom}_tail
 		cat {wildcards.chrom}_head {wildcards.chrom}_tail > PAUL4_BOTH_{wildcards.chrom}.vcf
-		
+
 		rm {wildcards.chrom}_tmp1 {wildcards.chrom}_tmp2 {wildcards.chrom}_head {wildcards.chrom}_tail
-		
+
 		{params.bcftools} roh --AF-dflt 0.4 -G 30 -o {wildcards.chrom}_tmp_o04  PAUL4_BOTH_{wildcards.chrom}.vcf
 		{params.bcftools} roh --AF-dflt 0.5 -G 30 -o {wildcards.chrom}_tmp_o05 PAUL4_BOTH_{wildcards.chrom}.vcf
 		{params.bcftools} roh --AF-dflt 0.6 -G 30 -o {wildcards.chrom}_tmp_o06 PAUL4_BOTH_{wildcards.chrom}.vcf
-		
+
 		rm PAUL4_BOTH_{wildcards.chrom}.vcf
 
 		grep RG {wildcards.chrom}_tmp_o04 | sed 's/# //g' | cut -f3- | sed 's/\[[0-9]\]//g' | sed 's/ //g' > {output.o04}
@@ -386,15 +387,42 @@ rule bctools_roh_combine:
 	shell:
 		"""
 		cd {params.dir}
-		
+
 		cat {input.i04} | sort | uniq > {output.o04}
 		cat {input.i05} | sort | uniq > {output.o05}
 		cat {input.i06} | sort | uniq > {output.o06}
-		
+
 		rm {input.i04} {input.i05} {input.i06}
 		"""
 
-# rule psmc_format:
+# Rule to get individual chromosome vcf files into consensus fasta files
+rule psmc_format_single:
+	input: OUT_DIR + "/PAUL4_Het_{chrom}.vcf"
+	output: OUT_DIR + "/{chrom}_Het_Consensus.fasta"
+	params:
+		dir = OUT_DIR
+		ref_dir = REF_DIR
+		bcftools = BCFTOOLS
+	shell:
+		"""
+		cd {params.dir}
+
+		# Get fasta for chromosome
+		samtools faidx {params.ref_dir}/LHISI_Scaffold_Assembly_Polished.fasta {wildcards.chrom} > tmp_{chrom}.fasta
+
+		# Gzip and tabix vcf
+		bgzip {input}
+		tabix {input}.gz
+
+		# Get consensus fasta
+		cat tmp_{chrom}.fasta | {params.bcftools} consensus -I {input}.gz > {wildcards.chrom}_Het_Consensus.fasta
+
+		# Clean up
+		rm tmp_{chrom}.fasta
+		"""
+
+# Rule to combine consensus fasta files into one file and turn into psmc format
+# rule psmc_format_combined:
 # take variant
 # combine into single for whole genome
 # turn into psmc format

@@ -14,6 +14,9 @@ library(ggplot2)
 library(Hmisc)
 library(patchwork)
 library(cowplot)
+library(readxl,       warn.conflicts = F)
+
+###### Genome wide H
 
 # Load data
 
@@ -122,8 +125,8 @@ weighted.se.mean <- function(x, w, na.rm = T){
 
 s_stats <- H %>%
   filter(Coverage > 0.1) %>%
-  summarise(W_Mean = weighted.mean(H,Coverage),
-            W_SE = weighted.se.mean(H,Coverage))
+  summarise(W_Mean = weighted.mean(H,Coverage*(End-Start)),
+            W_SE = weighted.se.mean(H,Coverage*(End-Start)))
 
 # Make a final label to get genome wide average
 
@@ -152,30 +155,357 @@ png(paste0(FIGURE_DIR,"/genome_wide_H_",format(Sys.time(),"%Y%m%d"),".png"),
 plot(p1)
 dev.off()
 
+# Now we're going to look at the overall H for each chromosome
+# We'll simply calculate a mean and a standard deviation, and plot this against chromosome length
+
+tmp <- H %>%
+  filter(Coverage > 0.1) %>%
+  group_by(Chromosome) %>%
+  summarise(W_Mean = weighted.mean(H,Coverage*(End-Start)),
+            LQuantile = quantile(H,0.025),
+            UQuantile = quantile(H,0.975),
+            Length = first(max(End)))
+
+tmp_model <- lm(W_Mean~Length,data=tmp)
+summary(tmp_model)
+
+H_v_length <- tmp %>%
+  ggplot(aes(x=Length,y=W_Mean)) + 
+  geom_smooth(method="lm",colour="black") +
+  geom_point(size=3,pch=21,colour="black",aes(fill=Chromosome)) + 
+  scale_fill_manual(unique(H$Chromosome),values=colours) +
+  scale_y_continuous(limits=c(0-0.00003,6e-4+0.00003),expand=c(0,0)) + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.grid=element_blank(),
+        legend.position="none") + 
+  labs(x="Chromosome length (bp)",
+       y="Weighted mean H") + 
+  annotate(geom="text",
+           x=3.6e8,
+           y=5.6e-4,
+           label="p = 0.042")
+
+png(paste0(FIGURE_DIR,"/H_v_chrom_length_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=6,height=6,units='in')
+plot(H_v_length)
+dev.off()
+
 # Now we're going to add to this the figure of genome_wide H of island species
 # This is from published data on the Kakapo and the island foxes
 
-islands <- read.table(paste0(DATA_DIR,"/20231222_genome_wide_H_islands.txt"),
-                      header=T,stringsAsFactors = F,sep="\t")
-islands <- rbind(islands,
-      c("Dryococelus_australis","LHISI","Insecta",s_stats$W_Mean,"This study",NA))
+islands <- suppressWarnings(read_excel(paste0(DATA_DIR,"/20231222_published_h_estimates.xlsx"),sheet="Sheet1"))
 
+islands <- rbind(islands,
+      c("Dryococelus_australis","LHISI","Insecta",s_stats$W_Mean,"This study",NA)) %>%
+  filter(Clade %in% c("Chordata","Insecta")) %>%
+  mutate(Observed_H = as.numeric(Observed_H)) %>%
+  group_by(Common_Name) %>%
+  summarise(Observed_H = mean(Observed_H),Clade=first(Clade)) %>%
+  ungroup()
+
+arrow_position=s_stats$W_Mean-0.000037
 p2 <- islands %>%
-  ggplot(aes(x=as.numeric(Observed_H),fill=Common_Name)) + 
-  geom_histogram(colour="black") + 
-  scale_y_continuous(limits=c(0,7),expand=c(0,0)) +
-  scale_fill_manual(values=c("grey94","grey70","springgreen3")) + 
+  ggplot(aes(x=Observed_H,fill=Clade)) + 
+  geom_histogram(colour="black",bins=30) + 
+  scale_y_continuous(limits=c(0,6.5),expand=c(0,0)) +
+  scale_fill_manual(values=c("grey88","grey64")) + 
+  scale_x_continuous(trans="log10") +
   theme_bw() + 
   theme(axis.text.y=element_blank(),
         axis.title.y=element_blank(),
         axis.ticks.y=element_blank(),
-        legend.position=c(0.9,0.1),
+        legend.position=c(0.9,0.9),
         legend.title = element_blank(),
         legend.background = element_rect(colour="black"),
         panel.grid=element_blank()) + 
-  labs(x="Genomic H"); p2
+  labs(x="Genomic H") + 
+  annotate(geom="segment",
+           y=3,yend=2.2,x=arrow_position,xend=arrow_position,
+           arrow = arrow(type = "closed", length = unit(0.02, "npc"))) ; p2
 
-png(paste0(FIGURE_DIR,"/island_H_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=7,height=7,units='in')
+png(paste0(FIGURE_DIR,"/published_genomic_H_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=6,height=6,units='in')
 plot(p2)
 dev.off()
+
+# Also write list of species with lower H
+
+islands %>% filter(Observed_H <= s_stats$W_Mean)
+
+# Baiji, Cheetah, Island_fox, Snow_leopard, Tasmanian_devil
+
+##### Genome wide ROH
+
+# Set environment
+
+source("../../config.R")
+setwd(paste0(WORKING_DIR,"/PAUL4"))
+
+# Libraries
+
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+library(Hmisc)
+library(patchwork)
+library(cowplot)
+library(readxl,       warn.conflicts = F)
+
+# Plink
+
+roh_plink <- readr::read_table("GENOME_WIDE_ROH_PLINK.txt")
+roh_plink <- roh_plink %>% mutate(Length = POS2-POS1)
+
+# BCFTOOLS
+
+roh_bcf_04 <- readr::read_table("GENOME_WIDE_ROH_04_BCFTOOLS.txt") ; colnames(roh_bcf_04)[c(1,4)] <- c("CHR","Length")
+roh_bcf_05 <- readr::read_table("GENOME_WIDE_ROH_05_BCFTOOLS.txt") ; colnames(roh_bcf_05)[c(1,4)] <- c("CHR","Length")
+roh_bcf_06 <- readr::read_table("GENOME_WIDE_ROH_06_BCFTOOLS.txt") ; colnames(roh_bcf_06)[c(1,4)] <- c("CHR","Length")
+
+### FROH with different cutoffs
+
+# Get lengths
+lengths <- read.table("../../References/scaffold_lengths")[1:16,]
+colnames(lengths) <- c("CHR","Total")
+
+roh_filt <- function(cutoff = 0,dataset=NULL){
+  
+  if(is.null(data)){stop("supply a data.frame")}
+  
+  dataset %>%
+    filter(Length > cutoff) %>%
+    group_by(CHR) %>%
+    summarise(Length = sum(Length)) %>%
+    summarise(sum(Length)/sum(lengths$Total)) %>%
+    return
+  
+}
+
+cutoffs <- c(1e5,1e6,5e6)
+
+tmp <- data.frame(ROH=c(unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_plink)),
+                 unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_04)),
+                 unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_05)),
+                 unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_06))),
+           Length = rep(cutoffs,4),
+           Method = rep(c("PLINK",
+                          "bcftools, AF = 0.4",
+                          "bcftools, AF = 0.5",
+                          "bcftools, AF = 0.6"),each=3))
+
+ROHs_figure <- tmp %>%
+  ggplot(aes(x=as.factor(Length),y=ROH,fill=Method)) + 
+  geom_bar(stat="identity",position=position_dodge(),colour="black") + 
+  scale_y_continuous(limits=c(0,1),expand=c(0,0)) + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.grid=element_blank(),
+        legend.position=c(0.85,0.86),
+        legend.background = element_rect(colour="black")) + 
+  scale_x_discrete(labels=c("> 100 kb","> 1 Mb","> 5 Mb")) + 
+  labs(x="Length",y=expression(F[ROH])) + 
+  scale_fill_brewer(palette = "Blues")
+
+png(paste0(FIGURE_DIR,"/roh_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=7,height=7,units='in')
+plot(ROHs_figure)
+dev.off()
+
+# Also save this as a table
+
+write.table(tmp,paste0("roh_software_comparison_",format(Sys.time(),"%Y%m%d"),".txt"),
+            row.names=F,col.names=T,quote=F,sep="\t")
+
+### Count of ROH per size category
+
+count_function <- function(data=NULL,label_=NULL){
+  
+  if(is.null(data)){stop("supply a data.frame")}
+  
+  data$Bin <- cut(data$Length,c(1e5,1e6,2e6,3e6,4e6,5e6,6e6,7e6,8e6,9e6,10e6,100e6))
+  data %>% group_by(Bin) %>%
+    summarise(Count = n()) %>%
+    filter(!is.na(Bin)) %>%
+    mutate(Method=label_) %>%
+    return
+  
+}
+
+tmp <- merge(count_function(roh_plink,label_="PLINK"),
+      count_function(roh_bcf_04,label_="bcftools, Af = 0.4"),all=T) %>%
+  merge(.,count_function(roh_bcf_05,label_="bcftools, Af = 0.5"),all=T) %>%
+  merge(.,count_function(roh_bcf_06,label_="bcftools, Af = 0.6"),all=T) %>% 
+  tidyr::complete(.,Bin,Method) %>%
+  tidyr::replace_na(list(Count=0))
+
+ROHs_count_figure <- tmp %>%
+  ggplot(aes(x=Bin,y=Count,fill=Method)) + 
+  geom_bar(stat="identity",position=position_dodge(),colour="black") + 
+  scale_y_continuous(limits=c(0,750),expand=c(0,0)) + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.grid=element_blank(),
+        legend.position=c(0.85,0.86),
+        legend.background = element_rect(colour="black")) + 
+  scale_x_discrete(labels=c("100 kb -\n1 Mb","1 Mb -\n2 Mb",
+                            "2 Mb -\n3 Mb","3 Mb -\n4 Mb","4 Mb -\n5 Mb",
+                            "5 Mb -\n6 Mb","6 Mb -\n7 Mb","7 Mb -\n8 Mb",
+                            "8 Mb -\n9 Mb","9 Mb -\n10 Mb","> 10 Mb")) + 
+  labs(x="Length",y="Count") + 
+  scale_fill_brewer(palette = "Blues")
+
+png(paste0(FIGURE_DIR,"/roh_count_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=7,height=7,units='in')
+plot(ROHs_count_figure)
+dev.off()
+
+# Also save as table
+
+write.table(tmp,paste0("roh_count_software_comparison_",format(Sys.time(),"%Y%m%d"),".txt"),
+            row.names=F,col.names=T,quote=F,sep="\t")
+
+### Get table of stats for all methods
+### Per chrom + overall mean, median, min, max, sd, etc
+
+tmp <- roh_plink %>%
+  filter(Length > 1e5) %>% group_by(CHR) %>%
+  summarise(Mean=mean(Length),
+            SD=sd(Length),
+            Max=max(Length),
+            Min=min(Length),
+            Median=median(Length),
+            Count=n(),
+            Method="PLINK")
+tmp1 <- roh_plink %>% filter(Length > 1e5) %>%
+  summarise(CHR="Overall",
+            Mean=mean(Length),
+            SD=sd(Length),
+            Max=max(Length),
+            Min=min(Length),
+            Median=median(Length),
+            Count=n(),
+            Method="PLINK")
+roh_plink_stats <- rbind(tmp,tmp1)
+
+tmp <- roh_bcf_04 %>%
+  filter(Length > 1e5) %>% group_by(CHR) %>%
+  summarise(Mean=mean(Length),
+            SD=sd(Length),
+            Max=max(Length),
+            Min=min(Length),
+            Median=median(Length),
+            Count=n(),
+            Method="BCF_AF_04")
+tmp1 <- roh_bcf_04 %>% filter(Length > 1e5) %>%
+  summarise(CHR="Overall",
+            Mean=mean(Length),
+            SD=sd(Length),
+            Max=max(Length),
+            Min=min(Length),
+            Median=median(Length),
+            Count=n(),
+            Method="BCF_AF_04")
+roh_bcf_04_stats <- rbind(tmp,tmp1)
+
+tmp <- roh_bcf_05 %>%
+  filter(Length > 1e5) %>% group_by(CHR) %>%
+  summarise(Mean=mean(Length),
+            SD=sd(Length),
+            Max=max(Length),
+            Min=min(Length),
+            Median=median(Length),
+            Count=n(),
+            Method="BCF_AF_05")
+tmp1 <- roh_bcf_05 %>% filter(Length > 1e5) %>%
+  summarise(CHR="Overall",
+            Mean=mean(Length),
+            SD=sd(Length),
+            Max=max(Length),
+            Min=min(Length),
+            Median=median(Length),
+            Count=n(),
+            Method="BCF_AF_05")
+roh_bcf_05_stats <- rbind(tmp,tmp1)
+
+tmp <- roh_bcf_06 %>%
+  filter(Length > 1e5) %>% group_by(CHR) %>%
+  summarise(Mean=mean(Length),
+            SD=sd(Length),
+            Max=max(Length),
+            Min=min(Length),
+            Median=median(Length),
+            Count=n(),
+            Method="BCF_AF_06")
+tmp1 <- roh_bcf_06 %>% filter(Length > 1e5) %>%
+  summarise(CHR="Overall",
+            Mean=mean(Length),
+            SD=sd(Length),
+            Max=max(Length),
+            Min=min(Length),
+            Median=median(Length),
+            Count=n(),
+            Method="BCF_AF_06")
+roh_bcf_06_stats <- rbind(tmp,tmp1)
+
+write.table(roh_plink_stats,paste0("roh_plink_stats_",format(Sys.time(),"%Y%m%d"),".txt"),
+            row.names=F,col.names=T,quote=F,sep="\t")
+write.table(roh_bcf_04_stats,paste0("roh_bcf_04_stats_",format(Sys.time(),"%Y%m%d"),".txt"),
+            row.names=F,col.names=T,quote=F,sep="\t")
+write.table(roh_bcf_05_stats,paste0("roh_bcf_05_stats_",format(Sys.time(),"%Y%m%d"),".txt"),
+            row.names=F,col.names=T,quote=F,sep="\t")
+write.table(roh_bcf_06_stats,paste0("roh_bcf_06_stats_",format(Sys.time(),"%Y%m%d"),".txt"),
+            row.names=F,col.names=T,quote=F,sep="\t")
+
+# Plotting ROH themselves
+
+# Vector of colours
+colours <- rep(c("springgreen4","lightgreen"),8)
+
+# Get cumulative start length of scaffolds to add to ROH coords
+lengths$Cumu_Length <- cumsum(as.numeric(lengths$Total)) - lengths$Total + 1
+lengths <- lengths %>% mutate(Middle=(Cumu_Length + lead(Cumu_Length))/2)
+lengths$Middle[16] <- mean(c(lengths$Cumu_Length[16],sum(lengths$Total)))
+
+# Get, for each method, a data.frame of adjusted ROH coords
+plink_roh_plot <- merge(lengths,roh_plink) %>% mutate(Method="PLINK",Order=1) %>%
+  filter(Length > 1e6) %>% mutate(Start_Adj = POS1 + Cumu_Length, End_Adj = POS2 + Cumu_Length) %>% 
+  select(CHR,Start_Adj,End_Adj,Length,Method,Order)
+
+bcf_04_roh_plot <- merge(lengths,roh_bcf_04) %>% mutate(Method="bcf, AF = 0.4",Order=2) %>%
+  filter(Length > 1e6) %>% mutate(Start_Adj = Start + Cumu_Length, End_Adj = End + Cumu_Length) %>% 
+  select(CHR,Start_Adj,End_Adj,Length,Method,Order)
+
+bcf_05_roh_plot <- merge(lengths,roh_bcf_05) %>% mutate(Method="bcf, AF = 0.4",Order=3) %>%
+  filter(Length > 1e6) %>% mutate(Start_Adj = Start + Cumu_Length, End_Adj = End + Cumu_Length) %>% 
+  select(CHR,Start_Adj,End_Adj,Length,Method,Order)
+
+bcf_06_roh_plot <- merge(lengths,roh_bcf_06) %>% mutate(Method="bcf, AF = 0.4",Order=4) %>%
+  filter(Length > 1e6) %>% mutate(Start_Adj = Start + Cumu_Length, End_Adj = End + Cumu_Length) %>% 
+  select(CHR,Start_Adj,End_Adj,Length,Method,Order)
+
+# Plot this as a geom_rect
+roh_coords_plot <- rbind(plink_roh_plot,bcf_04_roh_plot,
+      bcf_05_roh_plot,bcf_06_roh_plot) %>%
+  ggplot() + 
+  geom_rect(aes(xmin=Start_Adj,xmax=End_Adj,fill=CHR,ymin=Order-0.35,ymax=Order+0.35)) + 
+  scale_x_continuous(breaks=lengths$Middle,labels=lengths$CHR,
+                     limits=c(-40e6,sum(lengths$Total)+40e6),expand=c(0,0)) + 
+  scale_fill_manual(values=colours) + 
+  theme_bw() + 
+  theme(legend.position="none",
+        axis.ticks=element_blank(),
+        axis.text.x=element_text(angle=30,hjust=1,vjust=1),
+        panel.grid=element_blank()) +
+  scale_y_continuous(breaks=c(1:4),
+                     labels=c("PLINK",
+                              "bcftools, AF = 0.4",
+                              "bcftools, AF = 0.5",
+                              "bcftools, AF = 0.6"))
+
+png(paste0(FIGURE_DIR,"/roh_location_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=10,height=3,units='in')
+plot(roh_coords_plot)
+dev.off()
+
+
