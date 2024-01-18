@@ -400,8 +400,8 @@ rule psmc_format_single:
 	input: OUT_DIR + "/PAUL4_Het_{chrom}.vcf"
 	output: OUT_DIR + "/{chrom}_Het_Consensus.fasta"
 	params:
-		dir = OUT_DIR
-		ref_dir = REF_DIR
+		dir = OUT_DIR,
+		ref_dir = REF_DIR,
 		bcftools = BCFTOOLS
 	shell:
 		"""
