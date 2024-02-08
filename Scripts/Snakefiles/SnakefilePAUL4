@@ -18,9 +18,15 @@ BCFTOOLS = SOFT_DIR + "/bcftools/bcftools"
 ### Only include autosomes for this
 CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
 #CHROMS = ["CM057008.1"] # tester line
+
 ### Define chunks for calling later
 NCHUNKS = 30
 CHUNKS = list(range(1,NCHUNKS+1))
+
+### Define intervals for PSMC testing
+INTERVALS = [15,16,17,18,19,20,25]
+NREPS = 100
+REPS = list(range(1,NREPS+1))
 
 ### Final rule
 rule all:
@@ -30,7 +36,7 @@ rule all:
 		OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt",
-		OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
+		OUT_DIR + "PAUL4_All_Het_PSMC_Results_Combined.txt"
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
@@ -110,6 +116,8 @@ rule variant_calling_freebayes:
 		regions = REF_DIR + "/bed_files/genome.{chrom}.region.{i}.bed"
 	output:
 		OUT_DIR + "/{chrom}/variants.{i}.vcf"
+	wildcard_constraints:
+		i="[0-9]+"
 	params:
 		soft = SOFT_DIR
 	threads: 1
@@ -119,8 +127,8 @@ rule variant_calling_freebayes:
 		-f {input.ref} \
 		-t {input.regions} \
 		--use-best-n-alleles 2 \
-    --report-monomorphic \
-    -0 --min-coverage 10 -g 30 \
+		 --report-monomorphic \
+		-0 --min-coverage 10 -g 30 \
 		{input.bam} > {output}
 		"""
 
@@ -129,6 +137,7 @@ rule filter_vcfs:
 	input: OUT_DIR + "/{chrom}/variants.{i}.vcf"
 	output:
 		out_het = OUT_DIR + "/{chrom}/variants.{i}.het.vcf",
+		out_hom = OUT_DIR + "/{chrom}/varians.{i}.hom.vcf"
 	threads:2
 	params:
 		dir = OUT_DIR,
@@ -429,15 +438,18 @@ rule psmc_format_single:
 		cat tmp_{wildcards.chrom}.fasta | {params.bcftools} consensus -I {input}.gz > {wildcards.chrom}_Het_Consensus.fasta
 
 		# Clean up
-		rm tmp_{wildcards.chrom}.fasta
+		rm tmp_{wildcards.chrom}.fasta {input}.gz.tbi
+		gunzip {input}.gz
 		"""
 
-# Rule to combine consensus fasta files into one file and turn into psmc format
+### Rule to combine consensus fasta files into one file and turn into psmc format
 rule psmc_format_combined:
 	input: expand(OUT_DIR + "/{chrom}_Het_Consensus.fasta",chrom=CHROMS)
-	output: OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
+	output:
+		consensus = OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa",
+		bootstrap = OUT_DIR + "/PAUL4_All_Het_Consensus_Split.psmcfa"
 	params:
-		dir = OUT_DIR
+		dir = OUT_DIR,
 		software_dir = SOFT_DIR
 	shell:
 		"""
@@ -447,16 +459,77 @@ rule psmc_format_combined:
 		cat {input} > tmp_all.fasta
 
 		# Turn into psmc format
-		{params.software_dir}/psmc/utils/fq2psmcfa tmp_all.fasta > {output}
+		{params.software_dir}/psmc/utils/fq2psmcfa tmp_all.fasta > {output.consensus}
+
+		# Get split fasta for bootstrapping
+		{params.software_dir}/psmc/utils/splitfa {output.consensus} > {output.bootstrap}
 
 		# Clean up
-		rm tmp_all.fasta
+		rm tmp_all.fasta CM*Consensus.fasta
 		"""
 
-# rule psmc:
-# run psmc on whole genome
-# stop here to check the number of recombination events and readjust
+# Initial testing reveals that 4+15*2+4+6 gives enough recombination events per time interval
 
-# rule psmc_bootstrap:
-# bootstrap psmc
-# possibly doesn't need to be parallelised
+### Rule to run single PSMC instance, at first to test recombination events
+rule psmc:
+	input: OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
+	output: OUT_DIR + "/PAUL4_All_Het_Consensus.psmc"
+	params:
+		software_dir = SOFT_DIR,
+		dir = OUT_DIR
+	threads: 4
+	shell:
+		"""
+		{params.software_dir}/psmc/psmc -N25 -t15 -r5 -p "4+15*2+4+6" -o {output} {input}
+		"""
+
+### Rule to run psmc bootstraps to get replicates
+rule psmc_bootstrap:
+	input: OUT_DIR + "/PAUL4_All_Het_Consensus_Split.psmcfa"
+	output: OUT_DIR + "/PAUL4_All_Het_Consensus_Round_{rep}.psmc"
+	params:
+		software_dir = SOFT_DIR,
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
+
+		# Use -b flag to sample from split up regions in split.psmcfa
+		{params.software_dir}/psmc/psmc \
+		-N25 -t15 -r5 -b -p "4+15*2+4+6" \
+		-o {output} {input}
+		"""
+
+### Will need to update this for own plotting system
+### Cannot get requirements for psmc/utils/psmc_plot.R installed
+### Will use plotPsmc.r functions from https://datadryad.org/stash/dataset/doi:10.5061/dryad.0618v
+### Rule to format psmc bootstraps
+rule psmc_bootstrap_format:
+	input: OUT_DIR + "/PAUL4_All_Het_Consensus_Round_{rep}.psmc"
+	output: OUT_DIR + "/psmc_formatted_{rep}.txt"
+	params:
+		software_dir = SOFT_DIR,
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
+		Rscript {params.software_dir}/Daus_WGS_Paper/Scripts/RScripts/paul4_psmc_formatting.R {input} 2e-8 100 2 {wildcards.rep}
+		"""
+
+### Rule to combine psmc bootstraps and main into one plotting file
+rule psmc_format_combine:
+	input:
+		bootstraps = expand(OUT_DIR + "/psmc_formatted_{rep}.txt",rep=REPS),
+		main = OUT_DIR + "/PAUL4_All_Het_Consensus.psmc"
+	output: OUT_DIR + "PAUL4_All_Het_PSMC_Results_Combined.txt"
+	params:
+		software_dir = SOFT_DIR,
+		dir = OUT_DIR
+	shell:
+		"""
+		cd {params.dir}
+		Rscript {params.software_dir}/Daus_WGS_Paper/Scripts/RScripts/paul4_psmc_formatting.R {input.main} 2e-8 100 2 main
+		cat psmc_formatted_main.txt {input.bootstraps} > {output}
+		rm psmc_formatted_main.txt {input.bootstraps}
+		"""
+
