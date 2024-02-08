@@ -132,7 +132,7 @@ rule variant_calling_freebayes:
 		{input.bam} > {output}
 		"""
 
-# Rule to filter vcfs, treating variant and invariant sites separately
+### Rule to filter vcfs, treating variant and invariant sites separately
 rule filter_vcfs:
 	input: OUT_DIR + "/{chrom}/variants.{i}.vcf"
 	output:
@@ -194,7 +194,7 @@ rule filter_vcfs:
 		rm {wildcards.chrom}_{wildcards.i}_het.vcf
 		"""
 
-## Rule to concat calls into chromosome specific directories
+### Rule to concat calls into chromosome specific directories
 rule concat_vcfs:
 	input:
 		calls_het = expand(OUT_DIR + "/{{chrom}}/variants.{i}.het.vcf", i=CHUNKS),
@@ -225,7 +225,7 @@ rule concat_vcfs:
 		rm head_{wildcards.chrom} het_{wildcards.chrom} hom_{wildcards.chrom} tmp2_{wildcards.chrom}
 		"""
 
-## Rule to get table of per-scaffold heterozygosity in sliding windows
+### Rule to get table of per-scaffold heterozygosity in sliding windows
 rule H:
 	input:
 		het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
@@ -267,7 +267,7 @@ rule H:
 		rm {wildcards.chrom}_*bed {wildcards.chrom}_*count {wildcards.chrom}_length
 		"""
 
-## Rule to combine H estimates per chromosome into single table for analysis
+### Rule to combine H estimates per chromosome into single table for analysis
 rule combine_H:
 	input: expand(OUT_DIR + "/H_count_{chrom}.txt",chrom=CHROMS)
 	output: OUT_DIR + "/GENOME_WIDE_H.txt"
@@ -282,7 +282,7 @@ rule combine_H:
 		rm {input}
 		"""
 
-## Rule to convert file to plink format
+### Rule to convert file to plink format
 rule plink_ROH_format:
 	input:
 		het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
@@ -314,7 +314,7 @@ rule plink_ROH_format:
 		rm full_{wildcards.chrom}.vcf
 		"""
 
-## Rule to run plink ROH analysis on all chromosome files separately
+### Rule to run plink ROH analysis on all chromosome files separately
 rule plink_ROH:
 	input:
 		OUT_DIR + "/PAUL4_{chrom}.bed"
@@ -332,7 +332,7 @@ rule plink_ROH:
 		--homozyg
 		"""
 
-## Rule to combine plink ROH estimates into one table
+### Rule to combine plink ROH estimates into one table
 rule plink_ROH_combine:
 	input:
 		expand(OUT_DIR + "/PAUL4_{chrom}.hom",chrom=CHROMS)
@@ -348,6 +348,7 @@ rule plink_ROH_combine:
 		rm *bed *bim *hom* *log *nosex *fam
 		"""
 
+### Rule to run bcftools ROH analysis
 rule bcftools_roh:
 	input:
 		het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
@@ -392,7 +393,7 @@ rule bcftools_roh:
 		rm {wildcards.chrom}_tmp_o04 {wildcards.chrom}_tmp_o05 {wildcards.chrom}_tmp_o06
 		"""
 
-## Rule to combine bcftools ROH estimates into single table
+### Rule to combine bcftools ROH estimates into single table
 rule bctools_roh_combine:
 	input:
 		i04 = expand(OUT_DIR + "/{chrom}_ROH_04.txt",chrom=CHROMS),
@@ -415,7 +416,7 @@ rule bctools_roh_combine:
 		rm {input.i04} {input.i05} {input.i06}
 		"""
 
-## Rule to get individual chromosome vcf files into consensus fasta files
+### Rule to get individual chromosome vcf files into consensus fasta files
 rule psmc_format_single:
 	input: OUT_DIR + "/PAUL4_Het_{chrom}.vcf"
 	output: OUT_DIR + "/{chrom}_Het_Consensus.fasta"
@@ -468,9 +469,15 @@ rule psmc_format_combined:
 		rm tmp_all.fasta CM*Consensus.fasta
 		"""
 
-# Initial testing reveals that 4+15*2+4+6 gives enough recombination events per time interval
+		# Initial testing reveals that 4+15*2+4+6 gives enough recombination events per time interval
+
+		rm tmp_all.fasta rm CM*Consensus.fasta
+		"""
+
+#INTERVALS = [15, 20, 25]
 
 ### Rule to run single PSMC instance, at first to test recombination events
+
 rule psmc:
 	input: OUT_DIR + "/PAUL4_All_Het_Consensus.psmcfa"
 	output: OUT_DIR + "/PAUL4_All_Het_Consensus.psmc"
