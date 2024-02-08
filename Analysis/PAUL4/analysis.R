@@ -508,4 +508,27 @@ png(paste0(FIGURE_DIR,"/roh_location_software_comparison_",format(Sys.time(),"%Y
 plot(roh_coords_plot)
 dev.off()
 
+### PSMC.... still in development
+
+data <- read.table("PAUL4_All_Het_PSMC_Results_Combined.txt",header=F,sep="\t")
+colnames(data) <- c("YearsAgo","Ne","Rep")
+
+# Should all YearsAgo be + 10^4
+data$YearsAgo <- data$YearsAgo + 10^4
+
+ggplot() + 
+  geom_step(data=data[data$Rep != "main",],
+            aes(x=YearsAgo,y=Ne,group=Rep),colour="grey") + 
+  geom_step(data=data[data$Rep == "main",],
+            aes(x=YearsAgo,y=Ne),colour="cornflowerblue") + 
+  scale_y_continuous(trans="log10",limits=c(10,25000)) + 
+  scale_x_continuous(limits=c(9000,50000)) + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.grid.minor=element_blank())
+
+# Weird artefact to analyse, but we'll get there...
+# What could cause this...
+  
+
 

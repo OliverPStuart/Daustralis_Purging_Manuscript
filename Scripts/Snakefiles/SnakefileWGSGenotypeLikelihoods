@@ -16,11 +16,11 @@ ANGSD_DIR = SOFT_DIR + "/angsd"
 ### The output tables, although zipped, have (3 + 3 * samples) columns and (1 + sites) fields
 
 ### Specify scaffold indices, expand to names, then fill results vector
-SCAFFOLDS = [1,2,3,5,6,7,8,9,10,11,12,13,14,15,16,17]
+CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
 POPS = ["lhisi", "lhip", "all"]
 
-results_pattern = OUT_DIR + "/{population}_scaffold{scaf}.beagle.gz"
-results = expand(results_pattern,population=POPS,scaf=SCAFFOLDS)
+results_pattern = OUT_DIR + "/{population}_{chrom}.beagle.gz"
+results = expand(results_pattern,population=POPS,chrom=CHROMS)
 
 rule all:
 	input:
@@ -72,12 +72,12 @@ rule estimate_gls:
     ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
     mask = OUT_DIR + "/autosome_regions_masked"
   output:
-    OUT_DIR + "/{population}_scaffold{scaffold}.beagle.gz"
+    OUT_DIR + "/{population}_{chrom}.beagle.gz"
   threads: 10
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR,
-    prefix = "{population}_scaffold{scaffold}"
+    prefix = "{population}_{chrom}"
   resources: mem="40GB", time="6:00:00", tempstorage="1GB"
   shell:
     """
@@ -106,5 +106,5 @@ rule estimate_gls:
     -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
     -SNP_pval 1e-4 -minInd $MIN_IND -setMinDepthInd 2 -setMaxDepthInd 8 \
     -doCounts 1 -GL 2 -doGlf 2 -doMaf 1 -doMajorMinor 1 -nThreads {threads} \
-    -sites {input.mask} -r Scaffold_{wildcards.scaffold}:1- 1> {params.out}/{params.prefix}.out 2> {params.out}/{params.prefix}.err
+    -sites {input.mask} -r {wildcards.chrom}:1- 1> {params.out}/{params.prefix}.out 2> {params.out}/{params.prefix}.err
     """
