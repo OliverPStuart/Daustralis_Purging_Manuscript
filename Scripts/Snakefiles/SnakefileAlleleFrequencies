@@ -50,7 +50,6 @@ rule make_mask:
   resources: mem="20GB", time="01:00:00", tempstorage="1GB"
   shell:
     """
-    module load bedtools
     cd {params.out}
 
     # Mask region file for angsd which is 1-indexed
@@ -73,7 +72,7 @@ rule make_mask:
 
 rule estimate_all:
   input:
-    list = "all_bam_list.txt",
+    list = HOME_DIR + "/all_bam_list.txt",
     ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
     mask = OUT_DIR + "/autosome_regions_masked"
   output:
@@ -130,7 +129,7 @@ rule estimate_pops:
   input:
     sites = OUT_DIR + "/scaffold{scaffold}_sites",
     ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
-    list = "{population}_bam_list.txt"
+    list = HOME_DIR + "/{population}_bam_list.txt"
   output: OUT_DIR + "/{population}_scaffold{scaffold}.mafs.gz"
   threads: 10
   params:
