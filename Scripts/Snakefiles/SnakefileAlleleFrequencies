@@ -47,7 +47,6 @@ rule make_mask:
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR
-  resources: mem="20GB", time="01:00:00", tempstorage="1GB"
   shell:
     """
     cd {params.out}
@@ -77,7 +76,7 @@ rule estimate_all:
     mask = OUT_DIR + "/autosome_regions_masked"
   output:
     OUT_DIR + "/{chrom}_all.mafs.gz"
-  threads: 10
+  threads: 24
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR,
@@ -110,7 +109,7 @@ rule make_sites:
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR
-  resources: mem="40GB", time="6:00:00", tempstorage="1GB"
+  resources: mem_mb=16000
   shell:
     """
     # Print sites with allele information
@@ -131,12 +130,12 @@ rule estimate_pops:
     ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
     list = HOME_DIR + "/{population}_bam_list.txt"
   output: OUT_DIR + "/{population}_scaffold{scaffold}.mafs.gz"
-  threads: 10
+  threads: 24
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR,
     prefix = "{population}_scaffold{scaffold}"
-  resources:  mem="40GB", time="6:00:00", tempstorage="1GB"
+  resources:  mem_mb=16000
   shell:
     """
     # Order of angsd lines is:
@@ -184,7 +183,6 @@ rule combine:
     angsd = ANGSD_DIR,
     out = OUT_DIR,
     scafs = CHROMS
-  resources:  mem="40GB", time="6:00:00", tempstorage="1GB"
   shell:
     """
     cd {params.out}
