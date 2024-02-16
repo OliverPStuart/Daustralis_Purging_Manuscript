@@ -69,8 +69,6 @@ rule make_beds:
 	priority: 5
 	shell:
 		"""
-		module load bedtools
-
 		cd {params.out}
 
 		# If statement to get different upper and lower bounds
@@ -115,7 +113,7 @@ rule make_beds:
 # space. The rule makes fake outputs in order to force the DAG through this
 # before moving on to actual parameter estimation. Priority is set to high so
 # that once a pos file is made, it gets quickly processed then removed before
-# other pos files get removed.
+# other depth files get created.
 
 rule remove:
 	input:
