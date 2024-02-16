@@ -81,7 +81,7 @@ rule estimate_all:
     angsd = ANGSD_DIR,
     out = OUT_DIR,
     prefix = "{chrom}_all"
-  resources: mem="40GB", time="6:00:00", tempstorage="1GB"
+  resources: mem_mb=16000
   shell:
     """
     # Order of angsd lines is:
@@ -109,7 +109,6 @@ rule make_sites:
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR
-  resources: mem_mb=16000
   shell:
     """
     # Print sites with allele information
