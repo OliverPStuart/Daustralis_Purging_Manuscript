@@ -184,7 +184,7 @@ H_v_length <- tmp %>%
   annotate(geom="text",
            x=3.6e8,
            y=5.6e-4,
-           label="p = 0.042")
+           label="p = 0.042") ; H_v_length
 
 png(paste0(FIGURE_DIR,"/H_v_chrom_length_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=6,height=6,units='in')
@@ -282,7 +282,7 @@ roh_filt <- function(cutoff = 0,dataset=NULL){
   
 }
 
-cutoffs <- c(1e5,1e6,5e6)
+cutoffs <- c(1e5,1e6,2e6,5e6)
 
 tmp <- data.frame(ROH=c(unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_plink)),
                  unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_04)),
@@ -292,7 +292,7 @@ tmp <- data.frame(ROH=c(unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_plink)),
            Method = rep(c("PLINK",
                           "bcftools, AF = 0.4",
                           "bcftools, AF = 0.5",
-                          "bcftools, AF = 0.6"),each=3))
+                          "bcftools, AF = 0.6"),each=4))
 
 ROHs_figure <- tmp %>%
   ggplot(aes(x=as.factor(Length),y=ROH,fill=Method)) + 
@@ -303,7 +303,7 @@ ROHs_figure <- tmp %>%
         panel.grid=element_blank(),
         legend.position=c(0.85,0.86),
         legend.background = element_rect(colour="black")) + 
-  scale_x_discrete(labels=c("> 100 kb","> 1 Mb","> 5 Mb")) + 
+  scale_x_discrete(labels=c("> 100 kb","> 1 Mb",">2 Mb","> 5 Mb")) + 
   labs(x="Length",y=expression(F[ROH])) + 
   scale_fill_brewer(palette = "Blues")
 
