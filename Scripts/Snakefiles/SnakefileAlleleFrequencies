@@ -30,6 +30,8 @@ results = expand(results_pattern,population=pops)
 ### Also make scaffold vector
 
 CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
+# Tester line
+#CHROMS = ["CM057007.1","CM057008.1"]
 
 rule all:
 	input: results
@@ -43,7 +45,7 @@ rule make_mask:
     bed = REF_DIR + "/autosome_regions.bed",
     mask = REF_DIR + "/Annotation/repeats.bed"
   output: OUT_DIR + "/autosome_regions_masked"
-  threads: 10
+  threads: 8
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR
@@ -57,8 +59,8 @@ rule make_mask:
 
     # Now index it with angsd
     {params.angsd}/angsd sites index {output}
-    sleep 3s
-    touch {output}.*
+    sleep 10s
+    touch {output}.bin {output}.idx
     """
 
 ### Rule to estimate mafs for all individuals at once. Important thing here is
@@ -75,13 +77,13 @@ rule estimate_all:
     ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
     mask = OUT_DIR + "/autosome_regions_masked"
   output:
-    OUT_DIR + "/{chrom}_all.mafs.gz"
-  threads: 24
+    OUT_DIR + "/{scaffold}_all.mafs.gz"
+  threads: 8
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR,
-    prefix = "{chrom}_all"
-  resources: mem_mb=16000
+    prefix = "{scaffold}_all"
+  resources: mem_mb=12000
   shell:
     """
     # Order of angsd lines is:
@@ -95,7 +97,7 @@ rule estimate_all:
     -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
     -SNP_pval 1e-4 -minInd 9 -setMinDepthInd 2 -setMaxDepthInd 8 \
     -doCounts 1 -GL 2 -doMaf 1 -doMajorMinor 4 -nThreads {threads} \
-    -sites {input.mask} -r {wildcards.chrom}:1-
+    -sites {input.mask} -r {wildcards.scaffold}:1-
     """
 
 ### Rule to get lists of sites from each scaffold and index them for angsd. This
@@ -116,8 +118,8 @@ rule make_sites:
 
     # Now index sites
     {params.angsd}/angsd sites index {output}
-    sleep 5s
-    touch {output}.*
+    sleep 10s
+    touch {output}.bin {output}.idx
     """
 
 ### Rule to estimate mafs for all sites for each population.  This is done per
@@ -127,14 +129,14 @@ rule estimate_pops:
   input:
     sites = OUT_DIR + "/{scaffold}_sites",
     ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
-    list = HOME_DIR + "/{population}_bam_list.txt"
-  output: OUT_DIR + "/{population}_{scaffold}.mafs.gz"
-  threads: 24
+    list = HOME_DIR + "/{population,[a-z]+}_bam_list.txt"
+  output: OUT_DIR + "/{population,[a-z]+}_{scaffold}.mafs.gz"
+  threads: 8
   params:
     angsd = ANGSD_DIR,
     out = OUT_DIR,
-    prefix = "{population}_{scaffold}"
-  resources:  mem_mb=16000
+    prefix = "{population,[a-z]+}_{scaffold}"
+  resources:  mem_mb=12000
   shell:
     """
     # Order of angsd lines is:
@@ -167,7 +169,7 @@ rule estimate_pops:
     -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
     -minInd $MININD -setMinDepthInd $MIN -setMaxDepthInd $MAX \
     -doCounts 1 -GL 2 -doMaf 1 -doMajorMinor 4 -nThreads {threads} \
-    -sites {input.sites} -r {wildcards.chrom}:1-
+    -sites {input.sites} -r {wildcards.scaffold}:1-
     """
 
 ### Rule to combine all files per population. We wait until all a population's
@@ -176,7 +178,7 @@ rule estimate_pops:
 
 rule combine:
   input: expand(OUT_DIR + "/{{population}}_{chrom}.mafs.gz",population=pops,chrom=CHROMS)
-  output: OUT_DIR + "/{population}.mafs.gz"
+  output: OUT_DIR + "/{population,[a-z]+}.mafs.gz"
   threads: 1
   params:
     angsd = ANGSD_DIR,
@@ -190,11 +192,11 @@ rule combine:
     echo -e "chromo\tposition\tmajor\tminor\tref\tknownEM\tnInd" > {wildcards.population}.mafs
 
     # Now loop over scaffold outfiles
-    for scaf in {params.CHROMS}
+    for scaf in {params.scafs}
       do
 
       # Take all lines except the header
-      zcat {wildcards.population}_"$scaf".mafs.gz | awk 'NR > 1' >> {wildcards.population}.mafs
+      zcat {wildcards.population}_${{scaf}}.mafs.gz | awk 'NR > 1' >> {wildcards.population}.mafs
 
       done
 
@@ -202,6 +204,6 @@ rule combine:
       gzip {wildcards.population}.mafs
 
 			# Remove temporary outputs
-			rm {wildcards.population}*scaf*maf* {wildcards.population}*arg
+			rm {wildcards.population}*CM*maf* {wildcards.population}_CM*.arg
 
     """
