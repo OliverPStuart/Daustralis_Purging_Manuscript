@@ -15,5 +15,6 @@ DATA_DIR=paste0(HOME_DIR,"/Data")
 SCRIPT_DIR=paste0(HOME_DIR,"/Scripts")
 FIGURE_DIR=paste0(HOME_DIR,"/Figures")
 WORKING_DIR=paste0(HOME_DIR,"/Analysis")
+REF_DIR=paste0(HOME_DIR,"/References")
 
 # The relevant script will then define a working directory, usually the containing directory
