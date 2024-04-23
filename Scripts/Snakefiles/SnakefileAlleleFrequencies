@@ -74,7 +74,7 @@ rule make_mask:
 rule estimate_all:
   input:
     list = HOME_DIR + "/all_bam_list.txt",
-    ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
+    ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
     mask = OUT_DIR + "/autosome_regions_masked"
   output:
     OUT_DIR + "/{scaffold}_all.mafs.gz"
@@ -128,7 +128,7 @@ rule make_sites:
 rule estimate_pops:
   input:
     sites = OUT_DIR + "/{scaffold}_sites",
-    ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
+    ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
     list = HOME_DIR + "/{population,[a-z]+}_bam_list.txt"
   output: OUT_DIR + "/{population,[a-z]+}_{scaffold}.mafs.gz"
   threads: 8

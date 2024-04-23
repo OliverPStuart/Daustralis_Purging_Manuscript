@@ -13,10 +13,15 @@ SCRATCH=/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI
 HOME_DIR=/mnt/data/dayhoff/home/u6905905
 REF_DIR=${SCRATCH}/References
 ALN_DIR=${SCRATCH}/Alignments/WGS
-WORKING_DIR=${SCRATCH}/Analyses/ngsParalogAnalysis
-NGSPARALOG=${HOME_DIR}/ngsparalog
+WORKING_DIR=${SCRATCH}/Analysis/ngsParalogAnalysis
+NGSPARALOG=${HOME_DIR}/ngsParalog
 
 cd ${WORKING_DIR}
+
+# If we're on Dayhoff, we need to finagle the conda settings
+#source ${HOME_DIR}/.bashrc
+eval "$(conda shell.bash hook)"
+conda activate paul4_env
 
 # We start by looping over the sites used to estimate allele
 # frequencies. We estimated frequencies one scaffold at a time
@@ -43,26 +48,22 @@ samtools mpileup \
 -b bam_list.txt \
 -l vars.txt  \
 -q 0 -Q 0--ff UNMAP,DUP | \
-${NGSPARALOG}/ngsparalog calcLR \
+${NGSPARALOG}/ngsParalog calcLR \
 -infile - -outfile lhisi_wgs \
--minQ 30 -minind 10 -mincov 2
+-minQ 30 -minind 6 -mincov 2
 
 # Now we use bedtools to get average coverage at all of these sites
 awk '{print $1"\t"$2-1"\t"$2}' vars.txt > vars.bed
 
-conda activate mosdepth_env
-
 for file in $(cat bam_list.txt)
 do
 PREFIX=$(echo ${file} | rev | cut -d "/"  -f1 | rev | cut -d "." -f1)
-#mosdepth --by vars.bed -n ${PREFIX} ${file}
-#rm *mosdepth* *csi
+mosdepth -t 6 --by vars.bed -n ${PREFIX} ${file}
+rm *mosdepth* *csi
 # Add just the depths into a tmp file
 zcat ${PREFIX}.regions.bed.gz | cut -f4 > ${PREFIX}.tmp
 rm ${PREFIX}.regions.bed.gz
 done
-
-conda deactivate
 
 # Paste the tmp files together, get row means with Rscript
 paste *tmp > tmp
@@ -74,6 +75,10 @@ paste vars.txt means > depths
 rm means
 
 # Now we run the dupHMM.R script
+
+conda deactivate
+
+conda activate duphmm_env
 
 # Estimate HMM parameters
 Rscript ${NGSPARALOG}/dupHMM.R  \
@@ -105,6 +110,8 @@ rm in1 in2
 
 done
 
+conda deactivate
+
 cat problematic_regions* > problematic_regions.bed
 rm *regions_*
 
@@ -115,6 +122,8 @@ rm *regions_*
 cp problematic_regions.bed ${REF_DIR}
 
 # Now we do some quick analysis to see how much of our analysable regions have been removed
+
+conda activate paul4_env
 
 # How much is covered by this
 bedtools merge -i problematic_regions.bed | \

@@ -13,6 +13,8 @@ REF_DIR = HOME_DIR + "/References"
 OUT_DIR = HOME_DIR + "/Analysis/PAUL4"
 SOFT_DIR = "/mnt/data/dayhoff/home/u6905905"
 BCFTOOLS = SOFT_DIR + "/bcftools/bcftools"
+REF = REF_DIR + "/LHISI_Scaffold_Assembly.fasta"
+
 
 ### Modify this line to exclude or include scaffolds as necessary
 ### Only include autosomes for this
@@ -36,12 +38,12 @@ rule all:
 		OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt",
-		OUT_DIR + "PAUL4_All_Het_PSMC_Results_Combined.txt"
+		OUT_DIR + "/PAUL4_All_Het_PSMC_Results_Combined.txt"
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
 	input:
-		ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
+		ref = REF,
 		r1 = READ_DIR + "/PAUL4_R1.fastq.gz",
 		r2 = READ_DIR + "/PAUL4_R2.fastq.gz"
 	output:
@@ -88,8 +90,8 @@ rule get_depth:
 ### Rule to make bed files to split up calling
 rule generate_freebayes_regions:
 	input:
-		ref_idx = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
-		index = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta.fai",
+		ref_idx = REF,
+		index = REF_DIR + "/LHISI_Scaffold_Assembly.fasta.fai",
 	output:
 		regions = expand(REF_DIR + "/bed_files/genome.{chrom}.region.{i}.bed", chrom=CHROMS, i=CHUNKS)
 	params:
@@ -112,7 +114,7 @@ rule variant_calling_freebayes:
 	input:
 		bam = ALN_DIR + "/PAUL4_WGS.bam",
 		index = ALN_DIR + "/PAUL4_WGS.bam.bai",
-		ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
+		ref = REF,
 		regions = REF_DIR + "/bed_files/genome.{chrom}.region.{i}.bed"
 	output:
 		OUT_DIR + "/{chrom}/variants.{i}.vcf"
@@ -203,7 +205,7 @@ rule concat_vcfs:
 	input:
 		calls_het = expand(OUT_DIR + "/{{chrom}}/variants.{i}.het.vcf", i=CHUNKS),
 		calls_hom = expand(OUT_DIR + "/{{chrom}}/variants.{i}.hom.vcf", i=CHUNKS),
-		index = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta.fai"
+		index = REF_DIR + "/LHISI_Scaffold_Assembly.fasta.fai"
 	output:
 		out_het = OUT_DIR + "/PAUL4_Het_{chrom}.vcf",
 		out_hom = OUT_DIR + "/PAUL4_Hom_{chrom}.vcf"
@@ -243,7 +245,7 @@ rule H:
 		cd {params.dir}
 
 		# Get length of scaffold
-		cut -f1,2 {params.ref_dir}/LHISI_Scaffold_Assembly_Polished.fasta.fai | grep {wildcards.chrom} > {wildcards.chrom}_length
+		cut -f1,2 {params.ref_dir}/LHISI_Scaffold_Assembly.fasta.fai | grep {wildcards.chrom} > {wildcards.chrom}_length
 
 		# Make bedfile
 		bedtools makewindows -g {wildcards.chrom}_length -w 1000000 -s 500000 > {wildcards.chrom}_windows.bed
@@ -294,6 +296,7 @@ rule plink_ROH_format:
 	output: OUT_DIR + "/PAUL4_{chrom}.bed"
 	params:
 		dir = OUT_DIR
+	threads: 10
 	shell:
 		"""
 		cd {params.dir}
@@ -312,7 +315,7 @@ rule plink_ROH_format:
 		rm tmp2_{wildcards.chrom} tail_{wildcards.chrom} head_{wildcards.chrom}
 
 		# Make plink format
-		plink --make-bed --keep-allele-order --double-id --allow-extra-chr --vcf full_{wildcards.chrom}.vcf --out PAUL4_{wildcards.chrom}
+		plink --make-bed --keep-allele-order --double-id --allow-extra-chr --vcf full_{wildcards.chrom}.vcf --out PAUL4_{wildcards.chrom} --threads 8
 
 		# Clean up tmp outputs
 		rm full_{wildcards.chrom}.vcf
@@ -404,9 +407,9 @@ rule bctools_roh_combine:
 		i05 = expand(OUT_DIR + "/{chrom}_ROH_05.txt",chrom=CHROMS),
 		i06 = expand(OUT_DIR + "/{chrom}_ROH_06.txt",chrom=CHROMS)
 	output:
-		o04 = OUT_DIR + "GENOME_WIDE_ROH_04_BCFTOOLS.txt",
-		o05 = OUT_DIR + "GENOME_WIDE_ROH_05_BCFTOOLS.txt",
-		o06 = OUT_DIR + "GENOME_WIDE_ROH_06_BCFTOOLS.txt"
+		o04 = OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
+		o05 = OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
+		o06 = OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt"
 	params:
 		dir = OUT_DIR
 	shell:
@@ -433,7 +436,7 @@ rule psmc_format_single:
 		cd {params.dir}
 
 		# Get fasta for chromosome
-		samtools faidx {params.ref_dir}/LHISI_Scaffold_Assembly_Polished.fasta {wildcards.chrom} > tmp_{wildcards.chrom}.fasta
+		samtools faidx {params.ref_dir}/LHISI_Scaffold_Assembly.fasta {wildcards.chrom} > tmp_{wildcards.chrom}.fasta
 
 		# Gzip and tabix vcf
 		bgzip {input}
@@ -525,7 +528,7 @@ rule psmc_bootstrap_format:
 		"""
 
 ### Rule to combine psmc bootstraps and main into one plotting file
-rule_psmc_format_combine:
+rule psmc_format_combine:
 	input:
 		bootstraps = expand(OUT_DIR + "/psmc_formatted_{rep}.txt",rep=REPS),
 		main = OUT_DIR + "/PAUL4_All_Het_Consensus.psmc"

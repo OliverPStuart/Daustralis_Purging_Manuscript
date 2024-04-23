@@ -36,11 +36,10 @@ rule make_mask:
 		mask = REF_DIR + "/Annotation/repeats.bed",
 		problematic = REF_DIR + "/problematic_regions.bed"
 	output: OUT_DIR + "/autosome_regions_masked"
-	threads: 10
+	threads: 1
 	params:
 		angsd = ANGSD_DIR,
 		out = OUT_DIR
-	resources: mem="20GB", time="01:00:00", tempstorage="1GB"
 	shell:
 		"""
 		cd {params.out}
@@ -68,7 +67,7 @@ rule make_mask:
 rule estimate_gls:
   input:
     list = HOME_DIR + "/{population}_bam_list.txt",
-    ref = REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
+    ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
     mask = OUT_DIR + "/autosome_regions_masked"
   output:
     OUT_DIR + "/{population}_{chrom}.beagle.gz"
@@ -77,7 +76,6 @@ rule estimate_gls:
     angsd = ANGSD_DIR,
     out = OUT_DIR,
     prefix = "{population}_{chrom}"
-  resources: mem="40GB", time="6:00:00", tempstorage="1GB"
   shell:
     """
 

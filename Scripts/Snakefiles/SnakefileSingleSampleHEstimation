@@ -7,11 +7,12 @@
 	### Naming convention is {sample}.bam
 ### This snakefile is run using a PBS job submission script which first creates some inputs
 
-HOME_DIR = "/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI"
-READ_DIR = HOME_DIR + "/Reads/WGS"
-ALN_DIR = HOME_DIR + "/Alignments/WGS"
-REF_DIR = HOME_DIR + "/References"
-OUT_DIR = HOME_DIR + "/Analysis/SingleSampleHEstimation"
+HOME_DIR = "/mnt/data/dayhoff/home/u6905905"
+SCRATCH = "/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI"
+READ_DIR = SCRATCH + "/Reads/WGS"
+ALN_DIR = SCRATCH + "/Alignments/WGS"
+REF_DIR = SCRATCH + "/References"
+OUT_DIR = SCRATCH + "/Analysis/SingleSampleHEstimation"
 SOFT_DIR = "/mnt/data/dayhoff/home/u6905905/"
 ANGSD_DIR = SOFT_DIR + "/angsd"
 
@@ -20,6 +21,7 @@ ANGSD_DIR = SOFT_DIR + "/angsd"
 
 # Modify this line to exclude or include scaffolds as necessary
 CHROMS = ["CM056993.1","CM056994.1","CM056995.1","CM056996.1","CM056997.1","CM056998.1","CM056999.1","CM057000.1","CM057001.1","CM057002.1","CM057003.1","CM057004.1","CM057005.1","CM057006.1","CM057007.1","CM057008.1"]
+#CHROMS = ["CM057008.1"]
 depths = ["low","mid"]
 samples = [line.strip() for line in open("wgs_sample_list.txt").readlines()]
 results_pattern = OUT_DIR + "/{sample}_{depth}Depth_{chrom}.ml"
@@ -44,7 +46,6 @@ rule get_depths:
 		out = OUT_DIR,
 		ref = REF_DIR,
 		prefix = "{sample}_{chrom}"
-	resources: mem="30GB", time="03:00:00", tempstorage="1GB"
 	priority: 1
 	shell:
 		"""
@@ -65,7 +66,6 @@ rule make_beds:
 		out = OUT_DIR,
 		ref = REF_DIR,
 		prefix = "{sample}_{depth}Depth_{chrom}"
-	resources: mem="30GB", time="03:00:00", tempstorage="1GB"
 	priority: 5
 	shell:
 		"""
@@ -127,7 +127,7 @@ rule remove:
 	priority: 10
 	shell:
 		"""
-		rm {params.out}/{wildcards.sample}_scaffold{wildcards.chrom}_depths.pos.gz
+		rm {params.out}/{wildcards.sample}_{wildcards.chrom}_depths.pos.gz
 		touch {output.out1} {output.out2}
 		"""
 
@@ -140,14 +140,13 @@ rule do_saf:
 		in2 = OUT_DIR + "/{sample}_midDepth_{chrom}_check",
 		sites = OUT_DIR + "/{sample}_{depth}Depth_{chrom}_nonRepeat",
 		bam = ALN_DIR + "/{sample}.bam",
-		ref = REF_DIR + "/LHISI_Assembly_Polished.fasta"
+		ref = REF_DIR + "/LHISI_Scaffold_Assembly.fasta"
 	output: OUT_DIR + "/{sample}_{depth}Depth_{chrom}.saf.idx"
 	threads: 10
 	params:
 		angsd = ANGSD_DIR,
 		out = OUT_DIR,
 		prefix = "{sample}_{depth}Depth_{chrom}"
-	resources: mem="30GB", time="03:00:00", tempstorage="1GB"
 	priority: 1
 	shell:
 		"""
@@ -167,7 +166,6 @@ rule ml_est:
 		angsd = ANGSD_DIR,
 		out = OUT_DIR,
 		prefix = "{sample}_{depth}Depth_{chrom}"
-	resources: mem="40GB", time="01:00:00", tempstorage="1GB"
 	priority: 1
 	shell:
 		"""
@@ -187,7 +185,6 @@ rule collate_and_tar:
 		depths = expand("{depth}",depth=depths),
 		out = OUT_DIR
 	threads: 1
-	resources: mem="50GB", time="05:00:00", tempstorage="1GB"
 	shell:
 		"""
 		cd {params.out}
@@ -197,7 +194,7 @@ rule collate_and_tar:
 		echo -e "Sample\tChrom\tDepth\tHet\tSites" > het_estimates_${{DATE}}.txt
 
 		# Loop over scaffolds, samples, and depths
-		for scaffold in {params.chroms}
+		for chrom in {params.chroms}
 			do
 			for sample in {params.samples}
 				do

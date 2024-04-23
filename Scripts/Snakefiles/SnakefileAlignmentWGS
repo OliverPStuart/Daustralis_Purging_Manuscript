@@ -44,7 +44,7 @@ rule cat:
 
 rule map:
 	input:
-		ref=REF_DIR + "/LHISI_Scaffold_Assembly_Polished.fasta",
+		ref=REF_DIR + "/LHISI_Scaffold_Assembly.fasta",
 		r1=READ_DIR + "/temp_{sample}_R1.fastq.gz",
 		r2=READ_DIR + "/temp_{sample}_R2.fastq.gz"
 	output:
