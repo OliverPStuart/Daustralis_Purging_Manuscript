@@ -540,7 +540,7 @@ rule psmc_format_combine:
 		"""
 		cd {params.dir}
 
-		Rscript {params.software_dir}/Daus_WGS_Paper/Scripts/RScrips/paul4_psmc_formatting.R {input.main} 2e-8 100 2 main
+		Rscript {params.software_dir}/Daus_WGS_Paper/Scripts/RScripts/paul4_psmc_formatting.R {input.main} 2e-8 100 2 main
 
 		cat psmc_formatted_main.txt {input.bootstraps} > {output}
 
