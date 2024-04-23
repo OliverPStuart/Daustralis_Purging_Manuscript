@@ -1,0 +1,426 @@
+---
+title: "Analysis of deleterious mutations in LHISI populations"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Preamble {.tabset}
+
+This document contains the analyses of mutation frequencies in the LHISI captive and wild subpopulations based on allele frequency estimates from the low-coverage LHISI data and variant effect predictor snpEff. Genome-wide allele frequencies are estimated using the snakefile "SnakefileAlleleFrequencies" which is configured to run through a PBS job on Gadi.
+
+### Environment
+
+```{r}
+# Set directory structure
+HOME_DIR="/Volumes/Alter/LHISI"
+REF_DIR=paste0(HOME_DIR,"/References")
+WORKING_DIR=paste0(HOME_DIR,"/Analyses/DeleteriousMutations")
+
+setwd(WORKING_DIR)
+
+# Load libraries
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(ggvenn)
+library(tidyr)
+library(ggxmean)
+
+# Function for complement
+`%ni%` <- Negate(`%in%`)
+```
+
+### Loading and diagnostics
+
+```{r}
+# Read data in, rename for ease of use
+lhisi <- read.table("../AlleleFrequencies/lhisi.mafs.gz",header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+lhip <- read.table("../AlleleFrequencies/lhip.mafs.gz",header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+wild <- read.table("../AlleleFrequencies/wild.mafs.gz",header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+colnames(lhisi) <- c("Scaffold","Position","MAF_lhisi","N_lhisi")
+colnames(lhip) <- c("Scaffold","Position","MAF_lhip","N_lhip")
+colnames(wild) <- c("Scaffold","Position","MAF_wild","N_wild")
+
+# Read in effect data
+effects <- read.table("vars_classified.txt",
+                      header=T,stringsAsFactors=F,sep="\t")[,c(1,2,3,4,5,6,7,8,10)]
+
+# Get site information
+scafs <- c(1:17)[-4]
+sites <- data.frame(Scaffold=character(),Position=character(),Ref=character(),Alt=character())
+for(i in 1:length(scafs)){
+  tmp <- eval(parse(text=paste0("read.table('../AlleleFrequencies/scaffold",scafs[i],"_sites',header=F,stringsAsFactors=F)")))
+  sites <- rbind(sites,tmp)
+}
+rm(tmp) ; colnames(sites) <- c("Scaffold","Position","Ref","Alt")
+
+# Give all sites their alleles
+effects <- merge(effects,sites)
+rm(sites)
+
+# Get gene AED scores
+scores <- read.table("gene_scores.txt",header=T,stringsAsFactors=F,sep="\t")[,c(1,2)]
+
+# Give variants inside genes their AED score
+intergenic <- effects %>% filter(is.na(Gene) == T)
+genic <- effects %>% filter(is.na(Gene) == F)
+genic <- merge(x=genic,y=scores,all.x=T)
+effects <- rbind.fill(genic,intergenic)
+rm(genic,intergenic,scores)
+
+# For each population, score every site by that population's frequency for the allele
+classify_maf <- function(x){
+  if(x <= 0.05){return("absent")} else
+    if (x > 0.05 & x < 0.95 ){return("segregating")} else
+      if (x >= 0.95 ){return("fixed")}
+}
+
+wild$fate_wild <- sapply(wild$MAF_wild,classify_maf)
+lhisi$fate_lhisi <- sapply(lhisi$MAF_lhisi,classify_maf)
+lhip$fate_lhip <- sapply(lhip$MAF_lhip,classify_maf)
+
+# Now get all of these into the effects dataset
+effects <- merge(effects,wild,all.x=T)
+effects <- merge(effects,lhisi,all.x=T)
+effects <- merge(effects,lhip,all.x=T)
+
+# Make an ID column for later
+effects$ID <- paste0(effects$Scaffold,"_",effects$Position)
+
+rm(lhisi,lhip,wild)
+```
+
+Below, I characterise the detected variants, as well as their coverage by the three subpopulations. There is no analysis of the allele frequencies of these variants just yet. This section serves purely to familiarise the data.
+
+```{r}
+effects %>% 
+  ggplot(aes(x=Variant_Type=="INTERGENIC")) + geom_bar()
+effects %>% 
+  filter(Variant_Type!="INTERGENIC" & Variant_Type!="DOWNSTREAM" & Variant_Type!="UPSTREAM") %>% 
+  ggplot(aes(x=Variant_Type)) + geom_bar() +
+  theme(axis.text.x=element_text(angle=45,vjust=1,hjust=1)) + 
+  scale_y_continuous(trans="log10")
+```
+
+So the vast majority of sites are intergenic, sure. Among those that aren't upstream or downstream of a gene, most are intronic, expected again. Then, the next highest class is non-synonymous coding variants. That is a little surprising, then synonymous coding, then stop-codon gains. This is interesting.
+
+```{r}
+effects %>% 
+  filter(Variant_Type!="INTERGENIC" & Variant_Type!="DOWNSTREAM" & Variant_Type!="UPSTREAM") %>%
+  ggplot(aes(x=Variant_Effect)) + geom_bar() + 
+  scale_y_continuous(trans="log10")
+```
+
+Curiously, the low effect sites are less abundant than the moderate effect sites. Not sure how to explain that.
+
+```{r}
+effects$Scaf_Order <- as.numeric(gsub("Scaffold_","",effects$Scaffold))
+effects %>% ggplot(aes(x=as.factor(Scaf_Order))) + geom_bar()
+effects %>% ggplot(aes(x=Position)) + geom_histogram() + 
+  facet_wrap(~Scaf_Order,scales="free_x") + theme(axis.text.x=element_blank(),axis.ticks.x=element_blank())
+
+effects$In_Gene <- is.na(effects$Gene)==F
+effects %>% group_by(Scaffold) %>%
+  dplyr::summarise(In_Out_Gene_Ratio = sum(In_Gene)/(n()),Scaf_Order=first(Scaf_Order)) %>%
+  ggplot(aes(x=as.factor(Scaf_Order),y=In_Out_Gene_Ratio)) + geom_col()
+```
+
+Distribution of variants across scaffold roughly matches the length of scaffolds. The arrangement of these across each of the scaffolds roughly matches what I know of the karyotype i.e. most of the longer scaffolds correspond to the metacentric chromosomes, except for one of them which is telocentric. The rest are all telocentric, so variants are roughly uniform along the length. The clusters of many variants at the ends of some of the shorter chromosomes is a little concerning, but not enough to make me think I should look further into them. The proportion of variant sites occurring within genes doesn't seem to vary much between scaffolds.
+
+Next is to redo all analyses of sites falling within/near genes but using only genes that have an AED score < 0.5.
+
+```{r}
+effects %>% filter(AED <= 0.5) %>%
+  filter(Variant_Type!="INTERGENIC" & Variant_Type!="DOWNSTREAM" & Variant_Type!="UPSTREAM") %>% 
+  ggplot(aes(x=Variant_Type)) + geom_bar() +
+  theme(axis.text.x=element_text(angle=45,vjust=1,hjust=1)) + 
+  scale_y_continuous(trans="log10")
+effects %>% filter(AED <= 0.5) %>%
+  filter(Variant_Type!="INTERGENIC" & Variant_Type!="DOWNSTREAM" & Variant_Type!="UPSTREAM") %>%
+  ggplot(aes(x=Variant_Effect)) + geom_bar() + 
+  scale_y_continuous(trans="log10")
+```
+
+And finally, we redo this but discarding all sites that fall within genes that overlap a repeat. We masked repeats in the sites overall, but some genes may be associated with repeats but have some regions left unmasked.
+
+```{r}
+unmasked <- data.frame(Gene=readLines("unmasked_genes"),Status="Unmasked")
+unmasked <- merge(effects,unmasked)
+
+unmasked %>% filter(AED <= 0.5) %>%
+  filter(Variant_Type!="INTERGENIC" & Variant_Type!="DOWNSTREAM" & Variant_Type!="UPSTREAM") %>% 
+  ggplot(aes(x=Variant_Type)) + geom_bar() +
+  theme(axis.text.x=element_text(angle=45,vjust=1,hjust=1)) + 
+  scale_y_continuous(trans="log10")
+unmasked %>% filter(AED <= 0.5) %>%
+  filter(Variant_Type!="INTERGENIC" & Variant_Type!="DOWNSTREAM" & Variant_Type!="UPSTREAM") %>%
+  ggplot(aes(x=Variant_Effect)) + geom_bar() + 
+  scale_y_continuous(trans="log10")
+```
+
+Overall the same, but we have very few intronic sites now, compared to before. This is interesting, because it suggests that there are genes with large repeats in their introns which thus expand their introns and provide a greater mutational target.
+
+### Analyses of allele frequency distributions
+
+```{r}
+# Find mutations fixed in wild that are present in the captives
+# What is their frequency in captivity?
+
+# Effects
+tmp1 <- effects %>% filter(fate_wild == "fixed") %>% filter(fate_lhisi != "absent") %>% pull(Variant_Effect)
+tmp2 <- effects %>% filter(fate_wild == "fixed") %>% filter(fate_lhip != "absent") %>% pull(Variant_Effect)
+xtabs(~tmp1) / sum(xtabs(~tmp1))*100 ; xtabs(~tmp1)
+xtabs(~tmp2) / sum(xtabs(~tmp2))*100 ; xtabs(~tmp2)
+
+# Are these mostly in common?
+tmp1 <- effects %>% filter(fate_wild == "fixed") %>% filter(fate_lhisi != "absent") %>% pull(ID)
+tmp2 <- effects %>% filter(fate_wild == "fixed") %>% filter(fate_lhip != "absent") %>% pull(ID)
+ggvenn(list(lhisi=tmp1,
+            lhip=tmp2),set_name_size = 5,stroke_size=0.5)
+
+```
+
+So there is no difference in the proportion of different effects lost or fixed in the two different captive populations. lhip has many more of the fixed wild alleles private to itself than lhisi. This just reflects the demographic history of the populations. 
+
+```{r}
+# Frequencies
+# Include those absent as well
+effects %>% 
+  filter(fate_wild == "fixed") %>% filter(!is.na(fate_lhisi)) %>% 
+  ggplot(aes(x=MAF_lhisi)) + geom_histogram(bins=21) + facet_wrap(~Variant_Effect,scales="free_y") +
+  ggtitle("Frequency of fixed wild alleles in LHISI")
+effects %>% 
+  filter(fate_wild == "fixed") %>% filter(!is.na(fate_lhip)) %>% 
+  ggplot(aes(x=MAF_lhip)) + geom_histogram(bins=21) + facet_wrap(~Variant_Effect,scales="free_y") +
+  ggtitle("Frequency of fixed wild alleles in LHIP")
+```
+
+Histograms shows that there are deleterious variants segregating in the wild that are mostly lost in LHISI, but the distributions do not change by variant type, indicating that drift is the strongest force operating here. In LHIP these mutations are at much higher frequency, indicating that introgression from Vanessa's line has reintroduced these alleles. The fact that drift alone is operating here is salient: we cannot expect  selection to remove these alleles from the captive populations. They are either masked by captivity or by drift.
+
+```{r}
+# Find mutations absent in the wild
+# What are their effects and frequencies in captive populations?
+
+# Effects
+tmp1 <- effects %>% filter(fate_wild == "absent") %>% filter(fate_lhisi != "absent") %>% pull(Variant_Effect)
+tmp2 <- effects %>% filter(fate_wild == "absent") %>% filter(fate_lhip != "absent") %>% pull(Variant_Effect)
+xtabs(~tmp1) / sum(xtabs(~tmp1))*100 ; xtabs(~tmp1)
+xtabs(~tmp2) / sum(xtabs(~tmp2))*100 ; xtabs(~tmp2)
+
+tmp1 <- effects %>% filter(fate_wild == "absent") %>% filter(fate_lhisi != "absent") %>% pull(ID)
+tmp2 <- effects %>% filter(fate_wild == "absent") %>% filter(fate_lhip != "absent") %>% pull(ID)
+ggvenn(list(lhisi=tmp1,
+            lhip=tmp2),set_name_size = 5,stroke_size=0.5)
+rm(tmp1,tmp2)
+```
+
+lhisi has more private alleles than lhip. Although the greater proportion are common to both. Probably due to the common provenance of the two. Some of those not in common are probably alleles which have arisen in captivity. An interesting outcome here is that of the fixed alleles present in the captive populations, those that come from the wild population have a higher proportion of high effect variants than those that come from captivity (0.16-0.17 % against 0.12-0.13 %).
+
+What if we break these up by frequency?
+
+```{r}
+tmp1 <- effects %>% filter(fate_wild == "absent") %>% filter(fate_lhisi != "absent") %>% filter(MAF_lhisi <= 0.25) %>% pull(ID)
+tmp2 <- effects %>% filter(fate_wild == "absent") %>% filter(fate_lhip != "absent") %>% filter(MAF_lhip <= 0.25) %>% pull(ID)
+ggvenn(list(lhisi_low=tmp1,
+            lhip_low=tmp2),set_name_size = 5,stroke_size=0.5)
+
+tmp1 <- effects %>% filter(fate_wild == "absent") %>% filter(MAF_lhisi > 0.25) %>% pull(ID)
+tmp2 <- effects %>% filter(fate_wild == "absent") %>% filter(MAF_lhip > 0.25) %>% pull(ID)
+ggvenn(list(lhisi_mid=tmp1,
+            lhip_mid=tmp2),set_name_size = 5,stroke_size=0.5)
+```
+
+At higher frequency, lhisi has way more. This implies that they arose in lhisi nd have slowly drifted up in frequency.
+
+```{r}
+# Frequencies
+effects %>% filter(fate_wild == "absent") %>% filter(!is.na(fate_lhisi)) %>% 
+  ggplot(aes(x=MAF_lhisi)) + geom_histogram(bins=21) + facet_wrap(~Variant_Effect,scales="free_y") +
+  ggtitle("Frequency of absent wild alleles in LHISI")
+effects %>% filter(fate_wild == "absent") %>% filter(!is.na(fate_lhip)) %>% 
+  ggplot(aes(x=MAF_lhip)) + geom_histogram(bins=21) + facet_wrap(~Variant_Effect,scales="free_y") +
+  ggtitle("Frequency of absent wild alleles in LHIP")
+```
+
+Most alleles which are absent in the wild are at low frequency in the captive populations, slightly higher in lhisi, heavier tailed distributions. This suggests that they are new, and that some heterozygosity is being recovered in captivity after the bottleneck, but it is taking a while. Also, this shows that there is again no difference between the variant effects classes, so again selection will not remove deleterious alleles as they arise, although need to do some actual stats here, calculate some medians etc.
+
+Can we break this up further by commonness/uniqueness to the two captive lines?
+
+```{r}
+effects <- effects %>% mutate(captive_fate=ifelse((fate_wild == "absent" & fate_lhisi != "absent" &  fate_lhip != "absent"),
+                                       "common",
+                                       ifelse((fate_wild == "absent" &  fate_lhisi != "absent" &  fate_lhip == "absent"),
+                                              "lhisi",
+                                              ifelse((fate_wild == "absent" &  fate_lhisi == "absent" &  fate_lhip != "absent"),
+                                                     "lhip",NA))))
+
+effects %>% filter(!is.na(captive_fate)) %>% filter(!is.na(fate_lhisi)) %>%
+  ggplot(aes(x=MAF_lhisi,fill=captive_fate)) + geom_histogram(bins=21) + facet_wrap(~Variant_Effect,scales="free_y") +
+  ggtitle("Frequency of absent wild alleles in LHISI")
+
+effects %>% filter(!is.na(captive_fate)) %>% filter(!is.na(fate_lhip)) %>%
+  ggplot(aes(x=MAF_lhip,fill=captive_fate)) + geom_histogram(bins=21) + facet_wrap(~Variant_Effect,scales="free_y") +
+  ggtitle("Frequency of absent wild alleles in LHISI")
+```
+
+And what is the relative proportion of different effect classes in the two populations?
+
+```{r}
+effects %>% filter(!is.na(captive_fate)) %>% filter(fate_lhisi != "absent") %>% 
+  ggplot(aes(x=Variant_Effect,fill=captive_fate)) + geom_bar(position="fill")
+
+effects %>% filter(!is.na(captive_fate)) %>% filter(fate_lhip != "absent") %>% 
+  ggplot(aes(x=Variant_Effect,fill=captive_fate)) + geom_bar(position="fill")
+```
+
+In lhip, the alleles unique to the population are of a greater proportion "high effect" compared to lhisi. This is consistent with there being many high-effect alleles present in the wild, but over time, accumulation of other mutation classes in captivity erodes this difference.
+
+```{r}
+# Find mutations segregating in the wild
+# Effects
+tmp1 <- effects %>% filter(fate_wild == "segregating") %>% filter(fate_lhisi != "absent") %>% pull(Variant_Effect)
+tmp2 <- effects %>% filter(fate_wild == "segregating") %>% filter(fate_lhip != "absent") %>% pull(Variant_Effect)
+xtabs(~tmp1) / sum(xtabs(~tmp1))*100 ; xtabs(~tmp1)
+xtabs(~tmp2) / sum(xtabs(~tmp2))*100 ; xtabs(~tmp2)
+
+# Frequencies
+effects %>% filter(fate_wild == "segregating") %>% filter(fate_lhisi != "absent") %>% 
+  ggplot(aes(x=MAF_lhisi)) + geom_histogram(bins=21) + facet_wrap(~Variant_Effect,scales="free_y") +
+  ggtitle("Frequency of absent wild alleles in LHISI")
+effects %>% filter(fate_wild == "segregating") %>% filter(fate_lhip != "absent") %>% 
+  ggplot(aes(x=MAF_lhip)) + geom_histogram(bins=21) + facet_wrap(~Variant_Effect,scales="free_y") +
+  ggtitle("Frequency of absent wild alleles in LHIP")
+```
+
+As expected, of the variants segregating in the wild, lhisi has lost most of them. lhip has not lost most of them. Only the absolute # of mutations changes between classes, as expected. The % of high effect mutations in this class that are segregating in the two populations is similar to the % of high effect mutations that arise in captivity.
+
+```{r}
+# Is the proportion of those that have been fixed in captivity related to their effects?
+
+tmp1 <- effects %>% filter(fate_lhisi == "fixed") %>% filter(fate_wild != "absent") %>% pull(Variant_Effect)
+tmp2 <- effects %>% filter(fate_lhip == "fixed") %>% filter(fate_wild != "absent") %>% pull(Variant_Effect)
+xtabs(~tmp1) / sum(xtabs(~tmp1))*100 ; xtabs(~tmp1)
+xtabs(~tmp2) / sum(xtabs(~tmp2))*100 ; xtabs(~tmp2)
+
+tmp1 <- effects %>% filter(fate_lhisi == "fixed") %>% filter(fate_wild != "absent") %>% pull(ID)
+tmp2 <- effects %>% filter(fate_lhip == "fixed") %>% filter(fate_wild != "absent") %>% pull(ID)
+ggvenn(list(lhisi=tmp1,
+            lhip=tmp2),set_name_size = 5,stroke_size=0.5)
+```
+
+Most of the wild alleles that are fixed in captivity are specific to a population. Overall, there are more wild alleles fixed in lhip than in lhisi. There are no high effect mutations from the wild fixed in lhisi.
+
+```{r}
+# Is the proportion of those that have been lost in captivity related to their effects?
+
+tmp1 <- effects %>% filter(fate_lhisi == "absent") %>% filter(fate_wild != "absent") %>% pull(Variant_Effect)
+tmp2 <- effects %>% filter(fate_lhip == "absent") %>% filter(fate_wild != "absent") %>% pull(Variant_Effect)
+xtabs(~tmp1) / sum(xtabs(~tmp1))*100 ; xtabs(~tmp1)
+xtabs(~tmp2) / sum(xtabs(~tmp2))*100 ; xtabs(~tmp2)
+
+tmp1 <- effects %>% filter(fate_lhisi == "absent") %>% filter(fate_wild != "absent") %>% pull(ID)
+tmp2 <- effects %>% filter(fate_lhip == "absent") %>% filter(fate_wild != "absent") %>% pull(ID)
+ggvenn(list(lhisi=tmp1,
+            lhip=tmp2),set_name_size = 5,stroke_size=0.5)
+```
+
+The wild alleles which are absent in captivity are slightly enriched for high effect mutations. More are lost in lhisi than in lhip.
+
+```{r}
+# Alleles which are fixed in captivity, where did they come from?
+tmp1 <- effects %>% filter(fate_lhisi == "fixed") %>% pull(fate_wild)
+tmp2 <- effects %>% filter(fate_lhip == "fixed") %>% pull(fate_wild)
+xtabs(~tmp1) / sum(xtabs(~tmp1))*100 ; xtabs(~tmp1)
+xtabs(~tmp2) / sum(xtabs(~tmp2))*100 ; xtabs(~tmp2)
+```
+
+So, in LHISI, many more of the fixed alleles arose in captivity. In LHIP, many of the fixed alleles are just from LHIP and have been retained. Overall, there are WAY more alleles fixed in LHIP than in LHISI.
+
+```{r}
+# Alleles which are absent in captivity, where did they come from?
+tmp1 <- effects %>% filter(fate_lhisi == "absent") %>% pull(fate_wild)
+tmp2 <- effects %>% filter(fate_lhip == "absent") %>% pull(fate_wild)
+xtabs(~tmp1) / sum(xtabs(~tmp1))*100 ; xtabs(~tmp1)
+xtabs(~tmp2) / sum(xtabs(~tmp2))*100 ; xtabs(~tmp2)
+```
+
+Of the alleles LHISI does not have, 27 % are specific to LHIP but not found in the wild. Of the alleles LHIP does not have, 63 % are specific to LHISI but not found in the wild.
+
+### Analyses of allele frequency change distributions
+
+In this tab, I analyse the distribution of allele frequency change from the wild to captivity.
+
+```{r}
+# Make function to get sign
+get_sign <- function(x){
+  # If sign is positive, decrease in captivity
+  if( x > 0 ){return("increase")} else
+    # If sign is negative, increase in captivity
+    if ( x < 0 ){return("decrease")} else
+      # If sign is NA, no change, fixed allele remains fixed
+      if ( x == 0 ){return("no change")} else
+        # Else
+        if( is.na(x) ){return(NA)}
+}
+```
+
+```{r}
+wild <- effects %>% filter(fate_wild != "absent")
+wild$lhisi_change <- wild$MAF_lhisi - wild$MAF_wild
+wild$lhip_change <- wild$MAF_lhip - wild$MAF_wild
+wild <- wild %>% drop_na(lhisi_change,lhip_change)
+wild$lhisi_sign <- sapply(wild$lhisi_change,get_sign)
+wild$lhip_sign <- sapply(wild$lhip_change,get_sign)
+```
+
+```{r}
+wild %>% ggplot(aes(x=lhisi_change,fill=fate_lhisi)) + 
+  geom_histogram(position="identity",colour="black") + 
+  facet_wrap(~Variant_Effect+fate_wild,scales="free_y",ncol=2) +
+  geom_x_median(size=1.5) + 
+  scale_y_continuous(limits=c(0,NA),expand=c(0,0)) + 
+  scale_x_continuous(limits=c(-1.05,1.05)) + 
+  geom_vline(xintercept=0,linetype="dashed")
+```
+
+So what does this plot tell us? Of those alleles fixed (or at high frequency) in WILD, the HIGH effect variants are most efficiently removed in LHISI, but not by much. All of these are no longer fixed in LHISI, whereas there are some remaining fixed in the other site classes. Of the segregating alleles, the distributions are very similar.
+
+```{r}
+wild %>% ggplot(aes(x=lhip_change,fill=fate_lhip)) + 
+  geom_histogram(position="identity",colour="black") + 
+  facet_wrap(~Variant_Effect+fate_wild,scales="free_y",ncol=2) +
+  geom_x_median(size=1.5) + 
+  scale_y_continuous(limits=c(0,NA),expand=c(0,0)) + 
+  scale_x_continuous(limits=c(-1.05,1.05)) + 
+  geom_vline(xintercept=0,linetype="dashed")
+```
+
+LHIP is a different story. Of those variants fixed in WILD, again they are most efficiently removed in the HIGH effect class. Many in the other effect classes remain fixed across the LHIP individuals. Of the segregating alleles, the story is again the same, the distributions are not especially different, although it looks kind of like a greater proportion of HIGH effect alleles have been lost in LHIP compared to other effect classes.
+
+### How many mutations per individual, aggregated?
+
+We can use the estimated frequencies of different mutations to get the expected number of mutations of that class per population.
+
+```{r}
+effects %>% filter(fate_lhisi != "absent") %>%
+  group_by(Variant_Effect,fate_lhisi) %>% mutate(lhisi_number=MAF_lhisi*9) %>%
+  dplyr::summarise(total=sum(lhisi_number,na.rm=T))
+
+effects %>% filter(fate_lhip != "absent") %>%
+  group_by(Variant_Effect,fate_lhip) %>% mutate(lhisi_number=MAF_lhip*9) %>%
+  dplyr::summarise(total=sum(lhisi_number,na.rm=T))
+
+```
+
+These counts will only make sense if I can polarise them: some of these mutations will be fixed across all individuals. Maybe just remove that?
+
+```{r}
+effects %>% filter(fate_lhisi != "absent" & !(is.na(fate_wild))) %>% ggplot(aes(x=MAF_lhisi,fill=fate_wild)) + geom_histogram() + facet_wrap(~Variant_Effect,scales="free_y",ncol=1)
+
+effects %>% filter(fate_lhip != "absent" & !(is.na(fate_wild))) %>% ggplot(aes(x=MAF_lhip,fill=fate_wild)) + geom_histogram() + facet_wrap(~Variant_Effect,scales="free_y",ncol=1)
+```
+
+This demonstrates that a large proprotion of the mid-frequency alleles are in lhisi are specific to captivity, whereas the greater proportion of those in lhip and from the wild. We can be somewhat confident that these are derived from captivity, since PAUL4 and VAN2 are the only individuals from whom LHIP and Vanessa line are descended. LHISI has much more v low frequency variants absent in captivity. This is the recovery of heterozygosity, but it seems like most of these will be removed by drift.

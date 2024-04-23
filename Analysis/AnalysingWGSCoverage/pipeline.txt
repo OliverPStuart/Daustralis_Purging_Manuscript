@@ -14,7 +14,12 @@ gzcat ${FILE}.regions.bed.gz | awk -v FILE=${FILE} '{print$0"\t"FILE}' >> covera
 
 done
 
+# Zip all mosdepth results
+
+tar -cvzf lc_wgs_depth.tar.gz *mosdepth* *regions*  
+rm *mosdepth* *regions*
+
 # Now run plotting script
 
-Rscript plotting.R
+Rscript analysis.R
 

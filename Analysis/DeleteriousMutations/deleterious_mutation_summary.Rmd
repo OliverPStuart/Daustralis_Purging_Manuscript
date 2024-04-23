@@ -1,0 +1,1004 @@
+---
+title: "Tracking deleterious mutations through the captivity bottleneck"
+output:
+  html_document:
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Preamble {.tabset}
+
+This document contains the analyses of deleterious mutations for the low-coverage LHISI data. Allele frequencies for all sites segregating across all three subpopulations (Wild, Captive, Hybrid) are estimated per scaffold for all subpopulations using the snakefile SnakefileAlleleFrequencies, which is configured to run within a PBS job on Gadi. All allele frequncies are estimated with the reference as the major allele, in order to catch any subpopulation specific fixations and in order to keep all frequencies in the same frame of reference.
+
+Following this, sites are further masked by the ngsParalog filter. Then, SNPEff is used to estimate the effects of all minor alleles (i.e. not the reference). I also get AED scores for all gene annotations from the LHISI_Scaffold_Assembly.annotation.gff.gz file. Finally, I use the output of the GenotypeLikelihoodROH analysis to calculate the fraction of individuals in which each site is contained in ROH.
+
+### Environment
+
+```{r}
+# Set directory structure
+HOME_DIR="/Volumes/Alter/LHISI"
+REF_DIR=paste0(HOME_DIR,"/References")
+WORKING_DIR=paste0(HOME_DIR,"/Analyses/DeleteriousMutations")
+
+setwd(WORKING_DIR)
+
+# Load libraries
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(ggvenn)
+library(tidyr)
+library(ggxmean)
+library(ggridges)
+library(ggpol)
+library(patchwork)
+
+options(dplyr.summarise.inform = FALSE)
+```
+
+### Loading and manipulating data
+
+```{r}
+### Making data.frame
+
+# Function for complement
+`%ni%` <- Negate(`%in%`)
+
+# Read data in, rename for ease of use
+Captive <- read.table("../AlleleFrequencies/lhisi.mafs.gz",
+                      header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+Hybrid <- read.table("../AlleleFrequencies/lhip.mafs.gz",
+                     header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+Wild <- read.table("../AlleleFrequencies/Wild.mafs.gz",header=T,
+                   stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+colnames(Captive) <- c("Scaffold","Position","MAF_Captive","N_Captive")
+colnames(Hybrid) <- c("Scaffold","Position","MAF_Hybrid","N_Hybrid")
+colnames(Wild) <- c("Scaffold","Position","MAF_Wild","N_Wild")
+
+# Read in effect data
+effects <- read.table("vars_classified.txt",
+                      header=T,stringsAsFactors=F,sep="\t")[,c(1,2,3,4,5,6,7,8,10)]
+
+# Get site information
+scafs <- c(1:17)[-4]
+sites <- data.frame(Scaffold=character(),
+                    Position=character(),
+                    Ref=character(),
+                    Alt=character())
+for(i in 1:length(scafs)){
+  tmp <- eval(parse(text=paste0("read.table('../AlleleFrequencies/scaffold",
+                                scafs[i],
+                                "_sites',header=F,stringsAsFactors=F)")))
+  sites <- rbind(sites,tmp)
+}
+rm(tmp) ; colnames(sites) <- c("Scaffold","Position","Ref","Alt")
+
+# Give all sites their alleles
+effects <- merge(effects,sites)
+rm(sites)
+
+# Get gene AED scores
+scores <- read.table("gene_scores.txt",
+                     header=T,stringsAsFactors=F,sep="\t")[,c(1,2)]
+
+# Give variants inside genes their AED score
+intergenic <- effects %>% filter(is.na(Gene) == T)
+genic <- effects %>% filter(is.na(Gene) == F)
+genic <- merge(x=genic,y=scores,all.x=T)
+effects <- rbind.fill(genic,intergenic)
+rm(genic,intergenic,scores)
+
+# For each population, score every site by that population's frequency for the allele
+classify_maf <- function(x){
+  if(x <= 0.05){return("absent")} else
+    if (x & x < 0.95 ){return("segregating")} else
+      if (x >= 0.95 ){return("fixed")}
+}
+
+Wild$fate_Wild <- sapply(Wild$MAF_Wild,classify_maf)
+Captive$fate_Captive <- sapply(Captive$MAF_Captive,classify_maf)
+Hybrid$fate_Hybrid <- sapply(Hybrid$MAF_Hybrid,classify_maf)
+
+# Now get all of these into the effects dataset
+effects <- merge(effects,Wild,all.x=T)
+effects <- merge(effects,Captive,all.x=T)
+effects <- merge(effects,Hybrid,all.x=T)
+
+# Make an ID column for later
+effects$ID <- paste0(effects$Scaffold,"_",effects$Position)
+
+rm(Captive,Hybrid,Wild)
+
+effects <- effects %>% mutate(captive_fate=ifelse((fate_Wild == "absent" & 
+                                                     fate_Captive != "absent" &  
+                                                     fate_Hybrid != "absent"), "common",
+                                                  ifelse((fate_Wild == "absent" &  
+                                                            fate_Captive != "absent" &  
+                                                            fate_Hybrid == "absent"), "Captive",
+                                                         ifelse((fate_Wild == "absent" &  
+                                                                   fate_Captive == "absent" &  
+                                                                   fate_Hybrid != "absent"),
+                                                                "Hybrid",NA))))
+
+### Classifying variants based on what happens to them in captivity
+### Generating more summary variables
+
+# Function to get categorical variable of sign
+
+get_sign <- function(x){
+  # If sign is positive, decrease in captivity
+  if( x > 0 ){return("increase")} else
+    # If sign is negative, increase in captivity
+    if ( x < 0 ){return("decrease")} else
+      # If sign is NA, no change, fixed allele remains fixed
+      if ( x == 0 ){return("no change")} else
+        # Else
+        if( is.na(x) ){return(NA)}
+}
+
+# Classifying variants based on presence in putative ROH in the three populations
+
+Hybrid <- read.table("LHIP.cov",header=F,stringsAsFactors=F,sep="\t")
+Captive <- read.table("LHISI.cov",header=F,stringsAsFactors=F,sep="\t")
+Wild <- read.table("Wild.cov",header=F,stringsAsFactors=F,sep="\t")
+colnames(Hybrid) <- c("Scaffold","Position","Coverage_Hybrid")
+colnames(Captive) <- c("Scaffold","Position","Coverage_Captive")
+colnames(Wild) <- c("Scaffold","Position","Coverage_Wild")
+
+tmp <- merge(Hybrid,Captive)
+tmp <- merge(tmp,Wild)
+
+effects <- merge(effects,tmp,all.x=T)
+
+rm(tmp,Captive,Hybrid,Wild)
+
+# Some refactorisation to order specific variables
+
+effects$Variant_Effect <- factor(effects$Variant_Effect,
+                                 levels=c("MODIFIER","LOW","MODERATE","HIGH"),
+                                 labels=c("MODIFIER","LOW","MODERATE","HIGH"))
+
+# Get the file of colour schemes
+colors <- read.delim(paste0(REF_DIR,"/three_pop_colour_map.txt"),
+                     header=T,stringsAsFactors=F,sep="\t")
+cols <- colors[c(1,2,3),"Set1"]
+names(cols) <- c("Wild","Hybrid","Captive")
+my_fill_2 <- scale_fill_manual(name = "Population", values = cols[2:3])
+my_col_2 <- scale_color_manual(name = "Population", values = cols[2:3])
+my_fill_3 <- scale_fill_manual(name = "Population", values = cols)
+my_col_3 <- scale_color_manual(name = "Population", values = cols)
+```
+
+### Overall counts
+
+How many variants of each type do we see in the three subpopulations? The interesting comparison here is between Captive and Hybrid, since they have similar sample size.
+
+Start with all detected sites, i.e. sites for which there was coverage to detect some variation.
+
+```{r}
+all <- effects %>%
+  pull(Variant_Effect)
+xtabs(~all) / length(all) ; length(all)
+
+effects %>% filter(!is.na(fate_Captive)) %>% nrow
+effects %>% filter(!is.na(fate_Hybrid)) %>% nrow
+effects %>% filter(!is.na(fate_Wild)) %>% nrow
+```
+
+Now the segregating sites
+
+```{r}
+captive <- effects %>% 
+  filter(fate_Captive == "segregating") %>% 
+  pull(Variant_Effect)
+xtabs(~captive) / length(captive)
+xtabs(~captive)
+length(captive)
+
+hybrid <- effects %>% 
+  filter(fate_Hybrid == "segregating") %>% 
+  pull(Variant_Effect)
+xtabs(~hybrid) / length(hybrid)
+xtabs(~hybrid)
+length(hybrid)
+
+wild <- effects %>%
+  filter(fate_Wild == "segregating") %>% 
+  pull(Variant_Effect)
+xtabs(~wild) / length(wild)
+xtabs(~wild)
+length(wild)
+```
+
+Overall, more variants were detected in the Hybrid subpopulation, even though this has one fewer individual sampled than the Captives. The wild has a lower load of segregating deleterious mutations than the Captive and Hybrid populations.
+
+Now let's make a data frame and test how much each population deviates from expectation. Is the proportion of high effect greater than expected in a population etc?
+
+```{r}
+captive <- effects %>% 
+  filter(fate_Captive == "segregating") %>% 
+  pull(Variant_Effect)
+
+hybrid <- effects %>% 
+  filter(fate_Hybrid == "segregating") %>% 
+  pull(Variant_Effect)
+
+wild <- effects %>%
+  filter(fate_Wild == "segregating") %>% 
+  pull(Variant_Effect)
+
+count_test <- chisq.test(rbind(
+  c(xtabs(~captive)[1],sum(xtabs(~captive)[-1])),
+  c(xtabs(~hybrid)[1],sum(xtabs(~hybrid)[-1])),
+  c(xtabs(~wild)[1],sum(xtabs(~wild)[-1]))
+  ))
+
+count_test
+count_test$residuals
+count_test$stdres
+```
+
+Does not appear to be too different from expectation. That said, the direction of deviation is informative. In captivity, there is slight excess of deleterious mutation compared to the two wild individuals, but deficit of "neutral" mutations. In the two wild individuals, this is the opposite. In the wild this is the opposite. The hybrids are mostly in between, except they seem enriched for high effect mutations somehow, and this is probably due to the high number of "fixed" high effect mutations in the two wild individuals. This is where it would be great to be able to polarise alleles.
+
+What happens if we exclude sites in non-coding regions of the genome?
+
+```{r}
+captive <- effects %>% 
+  filter(fate_Captive == "segregating" & !is.na(Gene)) %>% 
+  pull(Variant_Effect)
+
+hybrid <- effects %>% 
+  filter(fate_Hybrid == "segregating" & !is.na(Gene)) %>% 
+  pull(Variant_Effect)
+
+wild <- effects %>%
+  filter(fate_Wild == "segregating" & !is.na(Gene)) %>% 
+  pull(Variant_Effect)
+
+count_test <- chisq.test(rbind(
+  c(xtabs(~captive)[1],sum(xtabs(~captive)[-1])),
+  c(xtabs(~hybrid)[1],sum(xtabs(~hybrid)[-1])),
+  c(xtabs(~wild)[1],sum(xtabs(~wild)[-1]))
+  ))
+
+count_test
+count_test$residuals
+count_test$stdres
+```
+
+
+### Alleles from the wild
+
+Here, we analyse the fates of the alleles present in the wild. What happens to them in captivity? In the Hybrid line, these alleles are directly transmitted, and so we know their frequencies in the parent generation. In the Captive line, we only know that they are present in the wild, and so if present in the Captive line must have been transmitted through Adam and Eve, the original captive founders.
+
+```{r}
+Wild <- effects %>% filter(fate_Wild != "absent")
+
+# Calculate difference in frequency
+Wild$Captive_change <- Wild$MAF_Captive - Wild$MAF_Wild
+Wild$Hybrid_change <- Wild$MAF_Hybrid - Wild$MAF_Wild
+Wild <- Wild %>% drop_na(Captive_change,Hybrid_change)
+```
+
+Starting out, what are the frequencies of the wild alleles in the two captive populations?
+
+```{r}
+Wild %>%
+  ggplot(aes(x=MAF_Captive,fill=fate_Captive)) + 
+  geom_histogram(position="identity",colour="black") + 
+  facet_wrap(~Variant_Effect,scales="free_y",ncol=1) +
+  geom_x_median(size=1.5) + 
+  scale_y_continuous(limits=c(0,NA),expand=c(0,0))
+
+Wild %>% 
+  ggplot(aes(x=MAF_Hybrid,fill=fate_Hybrid)) + 
+  geom_histogram(position="identity",colour="black") + 
+  facet_wrap(~Variant_Effect,scales="free_y",ncol=1) +
+  geom_x_median(size=1.5) + 
+  scale_y_continuous(limits=c(0,NA),expand=c(0,0))
+```
+
+In the Captive line, this is mostly very low, and the median frequency is quite variable. In the Hybrid line, the spread is much wider. No consistent difference in median allele frequency, although the HIGH effect mutations appear fixed the least frequently. That said, the HIGH category has the lowest sample size, and so variance is also highest.
+
+What about the difference in allele frequencies?
+
+```{r}
+Wild %>% 
+  ggplot(aes(x=Captive_change,fill=fate_Captive)) + 
+  geom_histogram(position="identity",colour="black") + 
+  facet_wrap(~Variant_Effect,scales="free_y",ncol=1) +
+  geom_x_median(size=1.5) + 
+  scale_y_continuous(limits=c(0,NA),expand=c(0,0))
+
+Wild %>% 
+  ggplot(aes(x=Hybrid_change,fill=fate_Hybrid)) + 
+  geom_histogram(position="identity",colour="black") + 
+  facet_wrap(~Variant_Effect,scales="free_y",ncol=1) +
+  geom_x_median(size=1.5) + 
+  scale_y_continuous(limits=c(0,NA),expand=c(0,0))
+```
+
+Similar result as above, the Hybrid line obviously received these wild alleles recently, since the median frequency difference is around -0.25 compared to the wild individuals. This is considerably lower in the Captive line, and the Captive line lacks more of the wild alleles. This may be because they never received them, so let's plot this again but only look at segregating alleles in each populations, so, alleles which were definitely transmitted from the wild to each of the two populations.
+
+```{r}
+Wild %>% filter(fate_Captive != "absent") %>%
+  ggplot(aes(x=Captive_change,fill=fate_Captive)) + 
+  geom_histogram(position="identity",colour="black") + 
+  facet_wrap(~Variant_Effect,scales="free_y",ncol=1) +
+  geom_x_median(size=1.5) + 
+  scale_y_continuous(limits=c(0,NA),expand=c(0,0))
+
+Wild %>% filter(fate_Hybrid != "absent") %>%
+  ggplot(aes(x=Hybrid_change,fill=fate_Hybrid)) + 
+  geom_histogram(position="identity",colour="black") + 
+  facet_wrap(~Variant_Effect,scales="free_y",ncol=1) +
+  geom_x_median(size=1.5) + 
+  scale_y_continuous(limits=c(0,NA),expand=c(0,0))
+```
+
+This result roughly holds up. An interesting additional result here is that in the Hybrids, the median change doesn't shift much by class. For the Captives, the HIGH effect alleles have lower median frequency compared to the wild.
+
+Now let's look at this in more detail, and calculate some stats. Let's also make it slightly more presentable. We remove alleles present in the WILD and absent in CAPTIVE. We cannot tell if these are true losses in the captives or if they were never transmitted to captivity by the original founders.
+
+
+```{r}
+tmp_capt <- Wild %>% group_by(Variant_Effect) %>% 
+  filter(fate_Captive != "absent") %>%
+  dplyr::summarise(mean_Captive=mean(Captive_change),
+                   sd_Captive=sd(Captive_change)) %>%
+  gather(key, value, -Variant_Effect) %>%
+  extract(key, c("stat", "pop"), "(.+)_(.+)") %>%
+  spread(stat, value)
+tmp_hybr <- Wild %>% group_by(Variant_Effect) %>% 
+  dplyr::summarise(mean_Hybrid=mean(Hybrid_change),
+                   sd_Hybrid=sd(Hybrid_change)) %>%
+  gather(key, value, -Variant_Effect) %>%
+  extract(key, c("stat", "pop"), "(.+)_(.+)") %>%
+  spread(stat, value)
+
+change_data <- rbind(tmp_capt,tmp_hybr)
+
+change_data %>% ggplot(aes(x=Variant_Effect,y=mean,fill=pop)) + 
+  scale_y_continuous(limits=c(-0.8,0.1)) + 
+  geom_errorbar(aes(ymin=mean-sd,ymax=mean+sd),width=0,size=0.7,position=position_dodge(width=0.3)) + 
+  geom_point(size=4,pch=21,position=position_dodge(width=0.3)) + 
+  geom_hline(yintercept=0,linetype="dashed",colour="black",size=1) + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.background=element_blank(),
+        panel.grid.minor=element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_blank()) + 
+  labs(x="Variant\neffect",y="Frequency difference\nin captivity") + 
+  facet_wrap(~pop) + 
+  my_fill_2
+```
+
+The mean+/-sd change tells a slightly different story. It looks like for all cases, both populations, including and excluding absent alleles, HIGH effect alleles from the wild have lower frequency in Captive and Hybrid lines.
+
+Let's run some simple generalised linear models to test this effect. This has the convenience of the non-coding variants (type == "MODIFIER") being coded as the first value in the Variant_Effect factor, and so when running a GLM with categorical variables, all slopes will estimate the difference of the three coding variant classes to the non-coding.
+
+Without the absent alleles.
+
+First make the data.frame
+
+```{r}
+tmp_capt <- Wild %>% filter(fate_Captive != "absent") %>% 
+  select(Variant_Effect,Captive_change) %>% mutate(Pop="Captive")
+tmp_hybr <- Wild %>%
+  select(Variant_Effect,Hybrid_change) %>% mutate(Pop="Hybrid")
+colnames(tmp_hybr)[2] <- "change" ; colnames(tmp_capt)[2] <- "change"
+tmp <- rbind(tmp_capt,tmp_hybr)
+```
+
+Now test. We will test each population separately, and then all allele frequencies jointly. Then, finally, we'll test the overall difference in frequency between the populations.
+
+```{r}
+summary(lm(change~Variant_Effect,data=tmp[tmp$Pop=="Captive",]))
+summary(lm(change~Variant_Effect,data=tmp[tmp$Pop=="Hybrid",]))
+summary(lm(change~Variant_Effect,data=tmp))
+summary(lm(change~Pop,data=tmp))
+summary(lm(change~Variant_Effect+Pop,data=tmp))
+```
+
+Testing the populations on their own, there is no effect of mutation type on the allele frequency difference between either of the Captive/Hybrid populations and the wild. Pooling them, we find that overall, HIGH effect mutations have a greater difference in frequency (lower) compared to the other mutation classes. Finally, comparing the populations, the Hybrid allele frequency differences are higher than the Captive (so, less different to the wild). This all checks out. It tells a story of apparent differences in allele frequency change between mutation effect classes, but the effect is slight and the sample size is small, and so statistical significance does not fall out.
+
+The most complete model, modelling separate intercepts with the Pop variable and then comparing effect classes, shows that there is a significant effect of the high effect class on the loss of an alleles from the wild to captivity. Nice.
+
+Now let's quickly look at model fit.
+
+```{r}
+model_var <- lm(change~Variant_Effect,data=tmp)
+model_pop <- lm(change~Pop,data=tmp)
+model_both <- lm(change~Variant_Effect+Pop,data=tmp)
+
+summary(model_var)$adj.r.squared
+summary(model_pop)$adj.r.squared
+summary(model_both)$adj.r.squared
+
+sd(summary(model_var)$residuals)
+sd(summary(model_pop)$residuals)
+sd(summary(model_both)$residuals)
+
+```
+
+The addition of the population variable improves explained variance considerably, whereas the addition of the variant variable only slightly improves model fit. Let's look at the residuals here, to get an idea of the variance around our predicted mean, and to get a sense for how much additional stochasticity we cannot account for.
+
+```{r}
+var_residuals <- summary(model_var)$residuals
+pop_residuals <- summary(model_pop)$residuals
+both_residuals <- summary(model_both)$residuals
+
+data.frame(residuals=c(var_residuals,pop_residuals,both_residuals),
+           model=c(rep("var",length(var_residuals)),
+                   rep("pop",length(pop_residuals)),
+                   rep("both",length(both_residuals)))) %>%
+  ggplot(aes(x=residuals, fill=model)) + geom_histogram() +
+  facet_wrap(.~model,scales="free",ncol = 1)
+```
+
+So, our variables here do explain some of the variance in the allele frequency differences, but there is still a massive component of unexplained variance which is likely due to the stochastic effect of drift.
+
+### Alleles in ROH
+
+We have a summary variable indicating in how many individual each site with a variant is in ROH. Do the different populations differ in the distribution of effect classes of segregating variants at high and low ROH frequency sites?
+
+```{r}
+effects %>% filter(
+  fate_Captive == "segregating",
+  #Variant_Effect != "MODIFIER"
+  ) %>%
+  mutate(ROH_50 = ifelse(Coverage_Captive > 0.5,"Upper","Lower")) %>%
+  group_by(Variant_Effect,ROH_50) %>%
+  dplyr::summarise(tabulate=n()) %>% 
+  spread(key="ROH_50",value="tabulate") %>% 
+  mutate(ratio = Lower / Upper)
+
+effects %>% filter(
+  fate_Hybrid == "segregating",
+  #Variant_Effect != "MODIFIER"
+  ) %>%
+  mutate(ROH_50 = ifelse(Coverage_Hybrid > 0.5,"Upper","Lower")) %>%
+  group_by(Variant_Effect,ROH_50) %>%
+  dplyr::summarise(tabulate=n()) %>% 
+  spread(key="ROH_50",value="tabulate") %>% 
+  mutate(ratio = Lower / Upper)
+```
+
+The first table is the captives. There are definitely more HIGH impact mutations out of ROH than inside, and this ratio is closest to 1 for the MODIFIER mutations. The second table is the Hybrids, and for them, they tend to overall have much fewer segregating variants covered by ROH, which makes sense since they have fewer ROH overall. Here, there is an obvious order to the variant effect classes. The more deleterious a variant is predited to be, the greater proportion of those variants appear less frequently in ROH.
+
+Let's estimate some confidence intervals with resampling around these proportions and plot them.
+
+```{r}
+# Getting some sampling error intervals for these with bootstrapping
+
+capt_base <- effects %>% filter(
+  fate_Captive == "segregating",
+  #Variant_Effect != "MODIFIER"
+) %>%
+  mutate(ROH_50 = ifelse(Coverage_Captive > 0.5,"Upper","Lower"))
+
+hybr_base <- effects %>% filter(
+  fate_Hybrid == "segregating"
+) %>%
+  mutate(ROH_50 = ifelse(Coverage_Hybrid > 0.5,"Upper","Lower"))
+
+# Now bootstrap
+
+# Number of bootstraps
+boot=100
+# Get variant vector
+types <- c("MODIFIER","LOW","MODERATE","HIGH")
+
+# Captive
+vec <- c()
+for(i in 1:boot){
+
+  val <- capt_base[sample(x=1:nrow(capt_base),size=nrow(capt_base),replace=T),] %>%
+    group_by(ROH_50,Variant_Effect) %>%
+    dplyr::summarise(tabulate=n()) %>% 
+    spread(key="ROH_50",value="tabulate") %>% 
+    mutate(ratio = Lower / (Lower+Upper)) %>%
+    pull(ratio)
+
+  vec <- c(vec,val)
+
+  if(i == boot){
+    bootstrap_capt <- data.frame(ratio=vec,
+                                 Variant_Effect=rep(types,boot)) %>%
+      group_by(Variant_Effect) %>%
+      dplyr::summarise(sd=sd(ratio),
+                       mean=mean(ratio),
+                       median=median(ratio),
+                       upper_conf_95=quantile(ratio, probs = c(0.025,0.975))[2],
+                       lower_conf_95=quantile(ratio, probs = c(0.025,0.975))[1],
+                       Pop="Captive")
+    
+    bootstrap_capt$Variant_Effect <- factor(bootstrap_capt$Variant_Effect,
+                                            labels=types,
+                                            levels=types)
+    
+    ratio <- capt_base %>%
+      group_by(Variant_Effect,ROH_50) %>%
+      dplyr::summarise(tabulate=n()) %>% 
+      spread(key="ROH_50",value="tabulate") %>% 
+      mutate(ratio = Lower / (Lower+Upper))
+    
+    bootstrap_capt <- merge(ratio,bootstrap_capt)
+    
+  }
+  
+}
+
+# Hybrid
+vec <- c()
+for(i in 1:boot){
+  
+  val <- hybr_base[sample(x=1:nrow(hybr_base),size=nrow(hybr_base),replace=T),] %>%
+    group_by(ROH_50,Variant_Effect) %>%
+    dplyr::summarise(tabulate=n()) %>% 
+    spread(key="ROH_50",value="tabulate") %>% 
+    mutate(ratio = Lower / (Lower+Upper)) %>%
+    pull(ratio)
+  
+  vec <- c(vec,val)
+    
+  if(i == boot){
+    bootstrap_hybr <- data.frame(ratio=vec,
+                                 Variant_Effect=rep(types,boot)) %>%
+      group_by(Variant_Effect) %>%
+      dplyr::summarise(sd=sd(ratio),
+                       mean=mean(ratio),
+                       median=median(ratio),
+                       upper_conf_95=quantile(ratio, probs = c(0.025,0.975))[2],
+                       lower_conf_95=quantile(ratio, probs = c(0.025,0.975))[1],
+                       Pop="Hybrid")
+    bootstrap_hybr$Variant_Effect <- factor(bootstrap_hybr$Variant_Effect,
+                                            labels=types,
+                                            levels=types)
+    
+    ratio <- hybr_base %>%
+      group_by(Variant_Effect,ROH_50) %>%
+      dplyr::summarise(tabulate=n()) %>% 
+      spread(key="ROH_50",value="tabulate") %>% 
+      mutate(ratio = Lower / (Lower+Upper))
+    
+    bootstrap_hybr <- merge(ratio,bootstrap_hybr)
+    
+  }
+  
+}
+
+rbind(bootstrap_capt,bootstrap_hybr) %>%
+  ggplot(aes(y=Pop,x=ratio,xmin=lower_conf_95,xmax=upper_conf_95,fill=Variant_Effect)) +
+  geom_errorbar(position=position_dodge(width=0.5),width=0) +
+  geom_point(position=position_dodge(width=0.5),pch=21,size=3) +
+  scale_fill_brewer(palette = "YlGn") +
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        axis.title.y=element_blank(),
+        panel.grid = element_blank(),
+        axis.text=element_text(size=10)) + 
+  labs(x="% variants in\nlow ROH regions")
+```
+
+Alright, this is a slightly more nuanced picture. My takeaway is that overall, there are fewer impactful mutations in high ROH regions, but sample size dwindles considerably as we move through the effect classes. It very well may be that HIGH impact mutations are preferentially depleted inside ROH, but their number is so few so it's hard to have confidence in this estimate.
+
+Let's aggregate the effect classes into functional/neutral to improve statistical power.
+
+```{r}
+capt_base <- effects %>% filter(
+  fate_Captive == "segregating",
+  #Variant_Effect != "MODIFIER"
+) %>%
+  mutate(ROH_50 = ifelse(Coverage_Captive > 0.5,"Upper","Lower"),
+         coding = ifelse(Variant_Effect == "MODIFIER","NEUTRAL","FUNCTIONAL"))
+
+hybr_base <- effects %>% filter(
+  fate_Hybrid == "segregating"
+) %>%
+  mutate(ROH_50 = ifelse(Coverage_Hybrid > 0.5,"Upper","Lower"),
+         coding = ifelse(Variant_Effect == "MODIFIER","NEUTRAL","FUNCTIONAL"))
+
+# Number of bootstraps
+boot=100
+# Get variant vector
+types <- c("NEUTRAL","FUNCTIONAL")
+
+# Captive
+vec <- c()
+for(i in 1:boot){
+  
+  for(j in 1:length(types)){
+    
+    tmp <- capt_base[capt_base$coding == types[j],]
+    
+    val <- tmp[sample(x=1:nrow(tmp),size=nrow(tmp),replace=T),] %>%
+      group_by(ROH_50) %>%
+      dplyr::summarise(tabulate=n()) %>% 
+      spread(key="ROH_50",value="tabulate") %>% 
+      mutate(ratio = Lower / (Lower+Upper)) %>%
+      pull(ratio)
+    
+    vec <- c(vec,val)
+    
+  }
+  
+  if(i == boot){
+    bootstrap_capt <- data.frame(ratio=vec,
+                                 coding=rep(types,boot)) %>%
+      group_by(coding) %>%
+      dplyr::summarise(sd=sd(ratio),
+                       mean=mean(ratio),
+                       median=median(ratio),
+                       upper_conf_95=quantile(ratio, probs = c(0.025,0.975))[2],
+                       lower_conf_95=quantile(ratio, probs = c(0.025,0.975))[1],
+                       Pop="Captive",
+                       min=min(ratio),
+                       max=max(ratio))
+    
+    bootstrap_capt$coding <- factor(bootstrap_capt$coding,
+                                            labels=types,
+                                            levels=types)
+    
+    ratio <- capt_base %>%
+      group_by(coding,ROH_50) %>%
+      dplyr::summarise(tabulate=n()) %>% 
+      spread(key="ROH_50",value="tabulate") %>% 
+      mutate(ratio = Lower / (Lower+Upper))
+    
+    bootstrap_capt <- merge(ratio,bootstrap_capt)
+    
+  }
+  
+}
+
+# Hybrid
+vec <- c()
+for(i in 1:boot){
+  
+  for(j in 1:length(types)){
+    
+    tmp <- hybr_base[hybr_base$coding == types[j],]
+    
+    val <- tmp[sample(x=1:nrow(tmp),size=nrow(tmp),replace=T),] %>%
+      group_by(ROH_50) %>%
+      dplyr::summarise(tabulate=n()) %>% 
+      spread(key="ROH_50",value="tabulate") %>% 
+      mutate(ratio = Lower / (Lower+Upper)) %>%
+      pull(ratio)
+    
+    vec <- c(vec,val)
+    
+  }
+  
+  if(i == boot){
+    bootstrap_hybr <- data.frame(ratio=vec,
+                                 coding=rep(types,boot)) %>%
+      group_by(coding) %>%
+      dplyr::summarise(sd=sd(ratio),
+                       mean=mean(ratio),
+                       median=median(ratio),
+                       upper_conf_95=quantile(ratio, probs = c(0.025,0.975))[2],
+                       lower_conf_95=quantile(ratio, probs = c(0.025,0.975))[1],
+                       Pop="Hybrid",
+                       min=min(ratio),
+                       max=max(ratio))
+    bootstrap_hybr$coding <- factor(bootstrap_hybr$coding,
+                                            labels=types,
+                                            levels=types)
+    
+    ratio <- hybr_base %>%
+      group_by(coding,ROH_50) %>%
+      dplyr::summarise(tabulate=n()) %>% 
+      spread(key="ROH_50",value="tabulate") %>% 
+      mutate(ratio = Lower / (Lower+Upper))
+    
+    bootstrap_hybr <- merge(ratio,bootstrap_hybr)
+    
+  }
+  
+}
+
+rbind(bootstrap_capt,bootstrap_hybr) %>%
+  ggplot(aes(y=Pop,x=ratio,xmin=lower_conf_95,xmax=upper_conf_95,fill=coding)) +
+  geom_errorbar(position=position_dodge(width=0.5),width=0) +
+  geom_point(position=position_dodge(width=0.5),pch=21,size=3) +
+  scale_fill_brewer(palette = "YlGn") +
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        axis.title.y=element_blank(),
+        panel.grid = element_blank(),
+        axis.text=element_text(size=10)) + 
+  labs(x="% variants in\nlow ROH regions")
+```
+
+This is easier to interpret, but much simpler. The mean proportion of functional variants inside low ROH regions than the mean proportion of neutral variants: coding variants are enriched in low ROH regions, suggesting that inbreeding plays some role in removing them from the population.
+
+### Alleles from the wild in ROH
+
+Now, let's combine the two analyses. What is the distribution of mutations found in the wild inside and outside of ROH? Does it look like inbreeding has contributed to the removal of HIGH effect mutations? We can plot the allele frequency change of mutations which are more and less commonly found in ROH.
+
+```{r}
+Wild %>% filter(
+  fate_Captive == "segregating",
+  # Variant_Effect != "MODIFIER"
+) %>%
+  ggplot(aes(y=Captive_change,x=Variant_Effect,fill=Coverage_Captive > 0.5)) + 
+  geom_boxplot(outlier.alpha=0.1) + 
+#  geom_point(alpha=0.1,position=position_jitterdodge(dodge.width = 0.75,jitter.width = 0.2)) +
+  #geom_violin() +
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.background=element_blank(),
+        panel.grid.minor=element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_blank()) + 
+  scale_fill_discrete(labels=c("< 50", ">= 50"),name="ROH %") + 
+  scale_y_continuous(limits=c(-1,1),expand=c(0,0))
+
+Wild %>% filter(
+  fate_Hybrid == "segregating",
+  #  Variant_Effect != "MODIFIER"
+) %>%
+  ggplot(aes(y=Hybrid_change,x=Variant_Effect,fill=Coverage_Hybrid > 0.5)) + 
+  geom_boxplot(outlier.alpha=0.1) + 
+  #geom_point(alpha=0.1,position=position_jitterdodge(dodge.width = 0.75,jitter.width = 0.2)) +
+  #geom_violin() +
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.background=element_blank(),
+        panel.grid.minor=element_blank(),
+        strip.background = element_blank(),
+        strip.text = element_blank()) + 
+  scale_fill_discrete(labels=c("< 50", ">= 50"),name="ROH %") + 
+  scale_y_continuous(limits=c(-1,1),expand=c(0,0))
+```
+
+This might be easier to visualise as a distribution of differences. To calculate this, we generate vectors of quantiles for each group, from 0-100, and then subtract the high ROH quantiles from the low ROH quantiles, and from this we get a synthetic measure of the distribution of differences. 
+
+```{r}
+# Hybrids
+
+tmp1 <- Wild %>% filter(
+  fate_Hybrid == "segregating", Variant_Effect == "MODIFIER",Coverage_Hybrid >= 0.5
+) %>% pull(Hybrid_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+tmp2 <- Wild %>% filter(
+  fate_Hybrid == "segregating", Variant_Effect == "MODIFIER",Coverage_Hybrid < 0.5
+) %>% pull(Hybrid_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+modifier <- tmp2-tmp1
+
+tmp1 <- Wild %>% filter(
+  fate_Hybrid == "segregating", Variant_Effect == "LOW",Coverage_Hybrid >= 0.5
+) %>% pull(Hybrid_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+tmp2 <- Wild %>% filter(
+  fate_Hybrid == "segregating", Variant_Effect == "LOW",Coverage_Hybrid < 0.5
+) %>% pull(Hybrid_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+low <- tmp2-tmp1
+
+tmp1 <- Wild %>% filter(
+  fate_Hybrid == "segregating", Variant_Effect == "MODERATE",Coverage_Hybrid >= 0.5
+) %>% pull(Hybrid_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+tmp2 <- Wild %>% filter(
+  fate_Hybrid == "segregating", Variant_Effect == "MODERATE",Coverage_Hybrid < 0.5
+) %>% pull(Hybrid_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+moderate <- tmp2-tmp1
+
+tmp1 <- Wild %>% filter(
+  fate_Hybrid == "segregating", Variant_Effect == "HIGH",Coverage_Hybrid >= 0.5
+) %>% pull(Hybrid_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+tmp2 <- Wild %>% filter(
+  fate_Hybrid == "segregating", Variant_Effect == "HIGH",Coverage_Hybrid < 0.5
+) %>% pull(Hybrid_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+high <- tmp2-tmp1
+
+d <- data.frame(differences = c(modifier,low,moderate,high),
+           class = c(rep("modifier",101),
+                     rep("low",101),
+                     rep("moderate",101),
+                     rep("high",101))) 
+d$class <- factor(d$class,levels=c("modifier","low","moderate","high"))
+d %>%
+  ggplot(aes(y=class,x=differences,fill=class,group=class)) + 
+  geom_density_ridges() + labs(title="Hybrid",x="increase in allelic loss in high ROH regions") + 
+  xlim(c(-0.3,0.3))
+
+d %>%
+  ggplot(aes(x=class,y=differences,)) + 
+  geom_boxplot()
+
+
+# Captives 
+
+tmp1 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "MODIFIER",Coverage_Captive >= 0.5
+) %>% pull(Captive_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+tmp2 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "MODIFIER",Coverage_Captive < 0.5
+) %>% pull(Captive_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+modifier <- tmp2-tmp1
+
+tmp1 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "LOW",Coverage_Captive >= 0.5
+) %>% pull(Captive_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+tmp2 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "LOW",Coverage_Captive < 0.5
+) %>% pull(Captive_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+low <- tmp2-tmp1
+
+tmp1 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "MODERATE",Coverage_Captive >= 0.5
+) %>% pull(Captive_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+tmp2 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "MODERATE",Coverage_Captive < 0.5
+) %>% pull(Captive_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+moderate <- tmp2-tmp1
+
+tmp1 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "HIGH",Coverage_Captive >= 0.5
+) %>% pull(Captive_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+tmp2 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "HIGH",Coverage_Captive < 0.5
+) %>% pull(Captive_change) %>% quantile(probs = seq(from=0,to=1,by=0.01))
+high <- tmp2-tmp1
+
+d <- data.frame(differences = c(modifier,low,moderate,high),
+           class = c(rep("modifier",101),
+                     rep("low",101),
+                     rep("moderate",101),
+                     rep("high",101))) 
+d$class <- factor(d$class,levels=c("modifier","low","moderate","high"))
+d %>%
+  ggplot(aes(y=class,x=differences,fill=class,group=class)) + 
+  geom_density_ridges() + labs(title="Captives",x="increase in allelic loss in high ROH regions") + 
+  xlim(c(-0.3,0.3))
+
+d %>%
+  ggplot(aes(x=class,y=differences,)) + 
+  geom_boxplot()
+
+
+```
+
+These ridgeline plots show the relative loss of variants inside of regions with many ROH. So, in the case of the hybrids, the main effect of the variant class is on the dispersion of this value. No clear effect of variant class on the magnitude of the effect of inbreeding on allelic loss.
+
+The story is mostly the same. For the Captive subpopulation, wild alleles that have passed through the bottleneck are slowly removed. It does not look like ROH coverage of a site changes anything about the frequency difference of variant effect classes. In the Hybrids, there is very little difference between variants found inside and outside of ROH, this makes sense, since they have only just entered the Hybrid subpopulation to begin with, and so there would be little overall effect of inbreeding on their frequency and on ROH presence.
+
+Another approach, the histogram approach suggested by Sasha.
+
+```{r}
+tmp1 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "MODIFIER",Coverage_Captive >= 0.5
+) %>% pull(Captive_change)
+tmp2 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect == "MODIFIER",Coverage_Captive < 0.5
+) %>% pull(Captive_change)
+
+d1 <-data.frame(highroh_captive_modifier=cut(tmp1,breaks=seq(from=-1,to=1,by=0.1)))
+d2 <-data.frame(lowroh_captive_modifier=cut(tmp2,breaks=seq(from=-1,to=1,by=0.1)))
+
+p1 <- data.frame(xtabs(~d1$highroh_captive_modifier) - xtabs(~d2$lowroh_captive_modifier))
+colnames(p1) <- c("bin","high_roh_excess")
+p1$type <- "non-coding"
+
+tmp1 <- Wild %>% filter(
+  fate_Captive == "segregating", Variant_Effect != "MODIFIER",Variant_Effect != "LOW",Coverage_Captive >= 0.5
+) %>% pull(Captive_change)
+tmp2 <- Wild %>% filter(
+  fate_Captive == "segregating",Variant_Effect != "MODIFIER",Variant_Effect != "LOW", Coverage_Captive < 0.5
+) %>% pull(Captive_change)
+
+d1 <-data.frame(highroh_captive_modifier=cut(tmp1,breaks=seq(from=-1,to=1,by=0.1)))
+d2 <-data.frame(lowroh_captive_modifier=cut(tmp2,breaks=seq(from=-1,to=1,by=0.1)))
+
+p2 <- data.frame(xtabs(~d1$highroh_captive_modifier) - xtabs(~d2$lowroh_captive_modifier))
+colnames(p2) <- c("bin","high_roh_excess")
+p2$type <- "coding"
+
+rbind(p1,p2) %>% 
+  ggplot(aes(x=bin,y=high_roh_excess)) + 
+  geom_col() + 
+  facet_grid(type~.,scales="free_y") +
+  theme_bw() +
+  theme(axis.text.x=element_text(angle=30,hjust=1,vjust=1),
+        axis.ticks=element_blank()) +
+  labs(y="count excess in\nhigh ROH regions",x="allele frequency difference in\ncaptive line compared to VAN2/PAUL4")
+
+```
+
+This is an informative plot. It shows that those alleles which have changed the most in frequency are preferentially found in high ROH regions, and that this distribution doesn't change much depending on the variant type. Agrees with our overall lack of power to detect significantly different allele frequency changes for high effect mutations since they are less abundant.
+
+### *De novo* mutations in captivity
+
+How much of the segregating variation in captivity is not present in the wild individuals? Are the distributions of allele frequencies different in these two categories? Is the breakdown of variant effect classes different in captivity?
+
+```{r}
+Captive <- effects %>% filter(fate_Captive != "absent" & !is.na(fate_Captive))
+```
+
+First, let's break up allele frequencies by whether the variant is found in our wild individuals.
+
+```{r}
+Captive %>% filter(!is.na(fate_Wild)) %>%
+  ggplot(aes(x=MAF_Captive)) + 
+  geom_histogram(color="black") + 
+  facet_wrap(~fate_Wild,scales="free_y") + 
+  scale_x_continuous(limits=c(0,1))
+
+Captive %>% filter(!is.na(fate_Wild)) %>%
+  ggplot(aes(x=factor(fate_Wild,levels=c("absent","segregating","fixed")),y=MAF_Captive)) + 
+  geom_boxjitter(width = 0.6,
+                 outlier.color = NA,
+                 errorbar.draw = TRUE,
+                 jitter.alpha=0.02) +
+  scale_y_continuous(limits=c(0,1),name="Non-reference allele frequency\nin captive (LHISI) line") + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank()) + 
+  scale_x_discrete(breaks=c("absent","segregating","fixed"),
+                   labels=c("Absent","Segregating","Fixed"),
+                   name="Allele state in VAN2/PAUL4")
+
+Captive %>% filter(!is.na(fate_Wild)) %>%
+  group_by(fate_Wild) %>%
+  dplyr::summarise(mean=mean(MAF_Captive),
+            median=median(MAF_Captive))
+
+```
+
+Variants not found in the wild tend to have a distribution that clings to 0, suggesting that these are mostly *de novo* mutations that have arisen in captivity. Moreover, the variants which are fixed in the wild individuals, suggesting they are common on BP, have an intermediate frequency. This suggests that they were introduced into the Captive subpopulation and are slowly being removed by drift. There is also a large peak at 0, suggesting that many of the alleles present in the wild individuals indeed were not present in Adam and Eve. Variants segregating in the wild individuals also have a distribution that clings to 0, but with a much heavier tail. Overall, this figure tells us that a large proportion of the diversity in the Captive subpopulation probably arose in captivity.
+
+Now, let's think about effect classes. Is the proportion of different mutation types different depending on whether the allele probably arose in captivity or in the wild?
+
+```{r}
+wild <- Captive %>% filter(fate_Wild == "fixed" & !is.na(fate_Wild)) %>%
+  pull(Variant_Effect)
+captive <- Captive %>% filter(fate_Wild == "absent" & !is.na(fate_Wild)) %>%
+  pull(Variant_Effect)
+
+### Wild alleles, absolute numbers and proportions
+xtabs(~wild)
+xtabs(~wild) / length(wild)
+
+### Captive alleles, absolute numbers and proportions
+xtabs(~captive)
+xtabs(~captive) / length(captive)
+```
+
+There is no obvious directional difference between the two. More high among the wild alleles but more moderate among the captive alleles.
+
+Let's also quickly look at frequency.
+
+```{r}
+Captive %>% filter(!is.na(fate_Wild)) %>%
+  ggplot(aes(x=Variant_Effect,y=MAF_Captive)) + 
+  geom_boxplot() + 
+  facet_wrap(~fate_Wild) + 
+  scale_y_continuous(limits=c(0,1))
+```
+
+Again, nothing obvious stands out here.
+
+Let's plot this as scatterplots of allele frequencies in the two populations.
+
+```{r}
+Captive %>% filter(fate_Captive != "absent" & fate_Wild != "absent") %>%
+  ggplot(aes(x=MAF_Wild,y=MAF_Captive)) + 
+# geom_point(alpha=0.05)
+stat_density_2d(
+  geom = "raster",
+  aes(fill = after_stat(density)),
+  contour = FALSE
+) + scale_fill_viridis_c()
+```
+
+Let's simplify this. Of the  non-reference alleles found in captivity, what proportion of those are found in VAN2 and PAUL4?
+
+```{r}
+tmp <- effects %>% filter(fate_Captive == "segregating" | fate_Captive == "fixed") %>%
+  pull(fate_Wild)
+
+xtabs(~tmp) / (length(tmp) - sum(is.na(tmp)))
+```

@@ -522,7 +522,7 @@ ggplot() +
   geom_step(data=data[data$Rep == "main",],
             aes(x=YearsAgo,y=Ne),colour="cornflowerblue") + 
   scale_y_continuous(trans="log10",limits=c(10,25000)) + 
-  scale_x_continuous(limits=c(9000,50000)) + 
+  scale_x_continuous(limits=c(9000,11000)) + 
   theme_bw() + 
   theme(axis.ticks=element_blank(),
         panel.grid.minor=element_blank())

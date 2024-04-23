@@ -6,7 +6,7 @@
 #HOME_DIR=/Volumes/Alter/Daus_WGS_Paper
 #REF_DIR=${HOME_DIR}/References
 #ALN_DIR=${HOME_DIR}/Alignments/WGS
-#WORKING_DIR=${HOME_DIR}/Analyses/ngsParalogAnalysis
+#WORKING_DIR=${HOME_DIR}/Analysis/ngsParalogAnalysis
 
 # Dayhoff config
 SCRATCH=/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI
@@ -30,7 +30,7 @@ conda activate paul4_env
 for scaf in $(cat ${REF_DIR}/autosome_names)
 
 do
-	
+
 	zcat ../AlleleFrequencies/${scaf}_all.mafs.gz | \
 	awk 'NR > 1' | \
 	cut -f1,2 >> vars.txt
@@ -42,7 +42,7 @@ done
 
 find $ALN_DIR | \
 grep bam$ | \
-grep -v "C01216\|C01233\|C01218\|C01226\|C10133" > bam_list.txt
+grep -v "C01216\|C01233\|C01218\|C01226\|C10133\|_WGS" > bam_list.txt
 
 samtools mpileup \
 -b bam_list.txt \
@@ -52,15 +52,17 @@ ${NGSPARALOG}/ngsParalog calcLR \
 -infile - -outfile lhisi_wgs \
 -minQ 30 -minind 6 -mincov 2
 
+#RERUN FROM HERE
+
 # Now we use bedtools to get average coverage at all of these sites
-awk '{print $1"\t"$2-1"\t"$2}' vars.txt > vars.bed
+awk '{print $1"\t"$2-1"\t"$2}' lhisi_wgs > vars_filtered.bed
 
 for file in $(cat bam_list.txt)
 do
 PREFIX=$(echo ${file} | rev | cut -d "/"  -f1 | rev | cut -d "." -f1)
-mosdepth -t 6 --by vars.bed -n ${PREFIX} ${file}
+echo $PREFIX
+mosdepth -t 12 --by vars_filtered.bed -n ${PREFIX} ${file}
 rm *mosdepth* *csi
-# Add just the depths into a tmp file
 zcat ${PREFIX}.regions.bed.gz | cut -f4 > ${PREFIX}.tmp
 rm ${PREFIX}.regions.bed.gz
 done
