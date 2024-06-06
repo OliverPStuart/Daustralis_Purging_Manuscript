@@ -41,7 +41,7 @@ cd PCangsd
 # Make a file containing the names of all individuals to be included
 # Remove samples that didn't run well
 
-find $ALN_DIR | grep bam$ | grep -v "C01216\|C01233\|C01218\|C01226\|C10133" > all_bam_list.txt
+find $ALN_DIR | grep bam$ | grep -v "C01216\|C01233\|C01218\|C01226\|C10133\|PAUL4_WGS" > all_bam_list.txt
 
 # Now loop over the estimated allele frequency files in the AlleleFrequency
 # analysis directory. We want to get lists of sites in the genome estimated as
