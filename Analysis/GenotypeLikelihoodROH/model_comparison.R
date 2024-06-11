@@ -2,7 +2,7 @@
 
 # Directory
 
-HOME_DIR="/Volumes/Alter/Daus_WGS_Paper"
+HOME_DIR="/mnt/data/dayhoff/home/scratch/groups/mikheyev/LHISI"
 WORKING_DIR=paste0(HOME_DIR,"/Analysis/GenotypeLikelihoodROH")
 REF_DIR=paste0(HOME_DIR,"/References")
 
@@ -58,8 +58,8 @@ models <- data.frame(Sample=character(),
 
 # Define vectors of classes and base_rates to try
 
-Ks = c(6)
-base_rates = c(2)
+Ks = c(6,7,8,9,10)
+base_rates = c(2,5,10)
 
 for( i in 1:length(Ks) ){
   for ( j in 1:length(base_rates) ){
@@ -77,7 +77,7 @@ for( i in 1:length(Ks) ){
                       method="estem",convem=1e-12,
                       fb = T,minr=1,
                       maxiter=5000,
-                      nT=16
+                      nT=48
                       )
     
     # Attach model results to the data.frame

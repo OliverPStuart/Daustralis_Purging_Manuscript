@@ -52,16 +52,15 @@ ${NGSPARALOG}/ngsParalog calcLR \
 -infile - -outfile lhisi_wgs \
 -minQ 30 -minind 6 -mincov 2
 
-#RERUN FROM HERE
-
 # Now we use bedtools to get average coverage at all of these sites
 awk '{print $1"\t"$2-1"\t"$2}' lhisi_wgs > vars_filtered.bed
+awk '{print $1"\t"$3}' lhisi_wgs > vars_filtered.txt
 
 for file in $(cat bam_list.txt)
 do
 PREFIX=$(echo ${file} | rev | cut -d "/"  -f1 | rev | cut -d "." -f1)
 echo $PREFIX
-mosdepth -t 12 --by vars_filtered.bed -n ${PREFIX} ${file}
+mosdepth -t 28 --by vars_filtered.bed -n ${PREFIX} ${file}
 rm *mosdepth* *csi
 zcat ${PREFIX}.regions.bed.gz | cut -f4 > ${PREFIX}.tmp
 rm ${PREFIX}.regions.bed.gz
@@ -73,7 +72,7 @@ Rscript row_sums.R
 rm *tmp*
 
 # Now paste to vars
-paste vars.txt means > depths
+paste vars_filtered.txt means > depths
 rm means
 
 # Now we run the dupHMM.R script
@@ -133,13 +132,13 @@ awk '{print $3-$2}' | \
 awk '{sum += $1} END {print sum}'
 
 # How much is covered by the repeats
-sort -k1,1 -k2,2n ${REF_DIR}/Annotation/repeats.bed | \
+sort -k1,1 -k2,2n ${REF_DIR}/Annotation/repeats_major.bed | \
 bedtools merge -i stdin | \
 awk '{print $3-$2}' | \
 awk '{sum += $1} END {print sum}'
 
 # Now merge the two, how much is covered
-cat problematic_regions.bed ${REF_DIR}/Annotation/repeats.bed |
+cat problematic_regions.bed ${REF_DIR}/Annotation/repeats_major.bed |
 sort -k1,1 -k2,2n | \
 bedtools merge -i stdin > tmp
 
@@ -147,11 +146,13 @@ awk '{print $3-$2}' tmp | \
 awk '{sum += $1} END {print sum}'
 
 # Now how much of the variants are removed after considering the
-wc -l vars.bed
-bedtools subtract -a vars.bed -b tmp | wc -l
+wc -l vars_filtered.bed
+bedtools subtract -a vars_filtered.bed -b tmp | wc -l
 
 # Of the autosomal regions not in the repeat mask, how much is covered by these problematic regions
-bedtools subtract -a $REF_DIR/autosome_regions.bed -b $REF_DIR/Annotation/repeats.bed > non_rep_autosomes.bed
+bedtools subtract \
+-a $REF_DIR/autosome_regions.bed \
+-b $REF_DIR/Annotation/repeats_major.bed > non_rep_autosomes.bed
 
 bedtools subtract -a non_rep_autosomes.bed -b problematic_regions.bed | \
 awk '{print $3-$2}' | \

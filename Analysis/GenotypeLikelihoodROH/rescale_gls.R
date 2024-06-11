@@ -66,7 +66,7 @@ for(ind in 1:n_ind){
 
 head <- data.frame(chr=gsub("_\\d+$","",raw_data$marker),
            id=raw_data$marker,
-           pos=gsub("^[^_]*_", "",raw_data$marker),
+           pos=gsub("^[^_]*_","",raw_data$marker),
            allele1=mapvalues(raw_data$allele1,from=c(0,1,2,3),to=c("A","C","G","T")),
            allele2=mapvalues(raw_data$allele2,from=c(0,1,2,3),to=c("A","C","G","T")))
 
