@@ -49,6 +49,7 @@ rm -rf *beagle.gz
 for pop in lhisi lhip all
 do
 	zcat ${pop}_CM*.pl.gz >> ${pop}_genome.pl
+	#gzcat ${pop}_CM*.pl.gz >> ${pop}_genome.pl
 done
 
 gzip *pl
@@ -68,7 +69,7 @@ rm *_CM*
 # You may want to run this on a cluster, and manually
 # uncomment the line which parallelises the model estimation.
 
-for pop in all lhisi lhip
+for pop in lhisi lhip all
 do
   Rscript model_comparison.R ${pop}_genome.pl.gz
 done

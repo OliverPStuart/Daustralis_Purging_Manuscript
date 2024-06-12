@@ -15,6 +15,78 @@ library(Hmisc)
 library(patchwork)
 library(cowplot)
 library(readxl,       warn.conflicts = F)
+library(scales)
+library(tidyr)
+
+###### Coverage
+
+# Load data
+
+depths <- read.table("PAUL4_WGS.regions.bed.gz")
+colnames(depths) <- c("Scaffold","Start","End","Depth")
+
+# Filter out minor scaffolds
+
+depths <- depths[grep("CM",depths$Scaffold),]
+unique(depths$Scaffold)
+
+# Make categorical variable for sex chromosome
+
+depths$Type <- ifelse(depths$Scaffold == "CM057009.1","X","Autosome")
+
+# Make depth figure
+
+p <- depths %>%
+  ggplot(aes(x=Depth,fill=Type)) + 
+  geom_histogram(colour="black",bins=40) + 
+  scale_x_continuous(limits=c(5,30),expand=c(0,0)) +
+  scale_y_continuous(limits=c(0,7500),expand=c(0,0)) +
+  scale_fill_manual(values=c("#98d5fa","#2e6094")) +
+  theme_bw() +
+  theme(axis.ticks=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.y=element_blank(),
+        panel.grid=element_blank())
+
+png(paste0(FIGURE_DIR,"/PAUL4_Depth_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=5,height=3,units='in')
+plot(p)
+dev.off()
+
+# Now analyse only autosomes
+# How uniform is coverage? Can we use a universal filter?
+
+grand_mean <- depths %>% 
+  filter(Type == "Autosome") %>%
+  summarise(Mean=mean(Depth)) %>%
+  pull(Mean)
+
+p <- depths %>% 
+  filter(Type == "Autosome") %>%
+  group_by(Scaffold) %>%
+  summarise(Mean=mean(Depth),
+            #SD=sd(Depth),
+            Lower_95=quantile(Depth,probs=0.025),
+            Upper_95=quantile(Depth,probs=0.975),
+            Lower_99=quantile(Depth,probs=0.005),
+            Upper_99=quantile(Depth,probs=0.995)) %>%
+  ggplot() + 
+  geom_vline(xintercept = grand_mean,linetype="dashed") +
+  geom_errorbar(aes(y=Scaffold,x=Mean,xmin=Lower_95,xmax=Upper_95),
+                width=0,linewidth=1) + 
+  geom_errorbar(aes(y=Scaffold,x=Mean,xmin=Lower_99,xmax=Upper_99),
+                width=0,linewidth=0.5) + 
+  geom_point(aes(y=Scaffold,x=Mean),size=5,pch=21,fill="#98d5fa") +
+  #scale_x_continuous(limits=c(5,35)) + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.grid=element_blank()) + 
+  scale_x_continuous(breaks=seq(5,75,5))
+
+png(paste0(FIGURE_DIR,"/PAUL4_Depth_Autosomes_95&99Quaantiles_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=7,height=6,units='in')
+plot(p)
+dev.off()
 
 ###### Genome wide H
 
@@ -83,7 +155,7 @@ for(i in 1:length(unique(H$Chromosome))){
 H$Chromosome <- factor(H$Chromosome,levels=unique(H$Chromosome),labels=unique(H$Chromosome))
 
 # Vector of colours
-colours <- rep(c("springgreen4","lightgreen"),8)
+colours <- rep(c("cornflowerblue","deepskyblue1"),8)
 
 # Set y-axis minimum and maximum
 ymin=0
@@ -184,7 +256,8 @@ H_v_length <- tmp %>%
   annotate(geom="text",
            x=3.6e8,
            y=5.6e-4,
-           label="p = 0.042") ; H_v_length
+           label=paste0("p = ",
+                        round(summary(tmp_model)$coefficients[2,4],3))) ; H_v_length
 
 png(paste0(FIGURE_DIR,"/H_v_chrom_length_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=6,height=6,units='in')
@@ -197,19 +270,20 @@ dev.off()
 islands <- suppressWarnings(read_excel(paste0(DATA_DIR,"/20231222_published_h_estimates.xlsx"),sheet="Sheet1"))
 
 islands <- rbind(islands,
-      c("Dryococelus_australis","LHISI","Insecta",s_stats$W_Mean,"This study",NA)) %>%
-  filter(Clade %in% c("Chordata","Insecta")) %>%
+      c("Dryococelus_australis","LHISI","D. australis",s_stats$W_Mean,"This study",NA)) %>%
+  filter(Clade %in% c("Chordata","Insecta","D. australis")) %>%
   mutate(Observed_H = as.numeric(Observed_H)) %>%
   group_by(Common_Name) %>%
   summarise(Observed_H = mean(Observed_H),Clade=first(Clade)) %>%
   ungroup()
 
-arrow_position=s_stats$W_Mean-0.000037
+arrow_position=s_stats$W_Mean-0.000025
 p2 <- islands %>%
   ggplot(aes(x=Observed_H,fill=Clade)) + 
   geom_histogram(colour="black",bins=30) + 
   scale_y_continuous(limits=c(0,6.5),expand=c(0,0)) +
-  scale_fill_manual(values=c("grey88","grey64")) + 
+  scale_fill_manual(breaks=c("Chordata","Insecta","D. australis"),
+                    values=c("grey88","grey64","cornflowerblue")) + 
   scale_x_continuous(trans="log10") +
   theme_bw() + 
   theme(axis.text.y=element_blank(),
@@ -460,7 +534,7 @@ write.table(roh_bcf_06_stats,paste0("roh_bcf_06_stats_",format(Sys.time(),"%Y%m%
 # Plotting ROH themselves
 
 # Vector of colours
-colours <- rep(c("springgreen4","lightgreen"),8)
+colours <- rep(c("cornflowerblue","deepskyblue1"),8)
 
 # Get cumulative start length of scaffolds to add to ROH coords
 lengths$Cumu_Length <- cumsum(as.numeric(lengths$Total)) - lengths$Total + 1

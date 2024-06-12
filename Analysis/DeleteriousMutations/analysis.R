@@ -96,19 +96,19 @@ rm(lhisi,lhip,wild)
 
 # Classifying variants based on presence in putative ROH in the three populations
 
-# lhip <- read.table("LHIP.cov",header=F,stringsAsFactors=F,sep="\t")
-# lhisi <- read.table("LHISI.cov",header=F,stringsAsFactors=F,sep="\t")
-# wild <- read.table("Wild.cov",header=F,stringsAsFactors=F,sep="\t")
-# colnames(lhip) <- c("Scaffold","Position","Coverage_lhip")
-# colnames(lhisi) <- c("Scaffold","Position","Coverage_lhisi")
-# colnames(wild) <- c("Scaffold","Position","Coverage_wild")
-# 
-# tmp <- merge(lhip,lhisi)
-# tmp <- merge(tmp,wild)
-# 
-# effects <- merge(effects,tmp,all.x=T)
-# 
-# rm(tmp,lhisi,lhip,wild)
+lhip <- read.table("LHIP.cov",header=F,stringsAsFactors=F,sep="\t")
+lhisi <- read.table("LHISI.cov",header=F,stringsAsFactors=F,sep="\t")
+wild <- read.table("Wild.cov",header=F,stringsAsFactors=F,sep="\t")
+colnames(lhip) <- c("Scaffold","Position","Coverage_lhip")
+colnames(lhisi) <- c("Scaffold","Position","Coverage_lhisi")
+colnames(wild) <- c("Scaffold","Position","Coverage_wild")
+
+tmp <- merge(lhip,lhisi)
+tmp <- merge(tmp,wild)
+ 
+effects <- merge(effects,tmp,all.x=T)
+ 
+rm(tmp,lhisi,lhip,wild)
 
 # Some refactorisation to order specific variables
 
@@ -225,11 +225,10 @@ p <- change_data %>%
 
 # Plot
 
-#setwd(OUT_DIR)
-#
-#png("figure_4a.png",width=5,height=3,units='in',res=300)
-#plot(p)
-#dev.off()
+png(paste0(FIGURE_DIR,"/frequency_change_",format(Sys.time(),"%Y%m%d"),".png"),
+    width=6,height=3,units='in',res=300)
+plot(p)
+dev.off()
 
 # Now run the tests
 # We exclude WildPresent-CaptiveAbsent alleles here
@@ -263,13 +262,13 @@ lhisi_base <- effects %>% filter(
   fate_lhisi == "segregating",
   #Variant_Effect != "MODIFIER"
 ) %>%
-  filter(is.na(AED) | AED > 0.25) %>%
+#  filter(is.na(AED) | AED > 0.25) %>%
   mutate(ROH_50 = ifelse(Coverage_lhisi > 0.5,"Upper","Lower"))
 
 lhip_base <- effects %>% filter(
   fate_lhip == "segregating"
 ) %>%
-  filter(is.na(AED) | AED > 0.25) %>%
+#  filter(is.na(AED) | AED > 0.25) %>%
   mutate(ROH_50 = ifelse(Coverage_lhip > 0.5,"Upper","Lower"))
 
 # Now bootstrap
@@ -283,9 +282,9 @@ types <- c("MODIFIER","LOW","MODERATE","HIGH")
 vec <- c()
 for(i in 1:boot){
   
-  if(i %% 100 == 0){
+  #if(i %% 100 == 0){
     print(i)
-  }
+  #}
   
   val <- lhisi_base[sample(x=1:nrow(lhisi_base),size=nrow(lhisi_base),replace=T),] %>%
     group_by(ROH_50,Variant_Effect) %>%
@@ -327,9 +326,9 @@ for(i in 1:boot){
 vec <- c()
 for(i in 1:boot){
   
-  if(i %% 100 == 0){
+  #if(i %% 100 == 0){
     print(i)
-  }
+  #}
   
   val <- lhip_base[sample(x=1:nrow(lhip_base),size=nrow(lhip_base),replace=T),] %>%
     group_by(ROH_50,Variant_Effect) %>%
@@ -399,8 +398,7 @@ p <- bootstraps %>%
   labs(x="% variants in\nlow ROH regions") ; p
 # Plot
 
-#setwd(OUT_DIR)
-
-#png("figure_4b.png",width=5,height=3,units='in',res=300)
-#plot(p)
-#dev.off()
+png(paste0(FIGURE_DIR,"/muts_in_roh_",format(Sys.time(),"%Y%m%d"),".png"),
+    width=6,height=3,units='in',res=300)
+plot(p)
+dev.off()
