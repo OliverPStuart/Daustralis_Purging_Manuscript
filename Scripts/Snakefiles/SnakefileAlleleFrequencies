@@ -43,7 +43,7 @@ rule all:
 rule make_mask:
   input:
     bed = REF_DIR + "/autosome_regions.bed",
-    mask = REF_DIR + "/Annotation/repeats.bed"
+    mask = REF_DIR + "/Annotation/repeats_major.bed"
   output: OUT_DIR + "/autosome_regions_masked"
   threads: 8
   params:

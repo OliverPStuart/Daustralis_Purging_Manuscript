@@ -33,6 +33,7 @@ REPS = list(range(1,NREPS+1))
 ### Final rule
 rule all:
 	input:
+		OUT_DIR + "/PAUL4_WGS.regions.bed.gz",
 		OUT_DIR + "/GENOME_WIDE_H.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_PLINK.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
@@ -81,9 +82,12 @@ rule get_depth:
 	output:
 		OUT_DIR + "/PAUL4_WGS.regions.bed.gz"
 	threads: 46
+	params:
+		out=OUT_DIR
 	shell:
 		"""
-		mosdepth -t {threads} -n -Q 10 -b 10000 PAUL4_WGS {input.bam}
+		cd {params.out}
+		mosdepth -t {threads} -n -Q 10 -b 100000 PAUL4_WGS {input.bam}
 		rm *mosdepth*
 		"""
 
@@ -154,7 +158,7 @@ rule filter_vcfs:
 
 		# Intersect specific bedfile with repeats bed file to reduce file-reading for vcftools
 
-		bedtools intersect -a {params.ref_dir}/bed_files/genome.{wildcards.chrom}.region.{wildcards.i}.bed -b {params.ref_dir}/Annotation/repeats.bed > filter_{wildcards.chrom}_{wildcards.i}.bed
+		bedtools intersect -a {params.ref_dir}/bed_files/genome.{wildcards.chrom}.region.{wildcards.i}.bed -b {params.ref_dir}/Annotation/repeats_major.bed > filter_{wildcards.chrom}_{wildcards.i}.bed
 
 		# Filter by depth first
 		# This will significantly reduce the burden of later sections
@@ -315,7 +319,7 @@ rule plink_ROH_format:
 		rm tmp2_{wildcards.chrom} tail_{wildcards.chrom} head_{wildcards.chrom}
 
 		# Make plink format
-		plink --make-bed --keep-allele-order --double-id --allow-extra-chr --vcf full_{wildcards.chrom}.vcf --out PAUL4_{wildcards.chrom} --threads 8
+		plink --make-bed --keep-allele-order --double-id --allow-extra-chr --vcf full_{wildcards.chrom}.vcf --out PAUL4_{wildcards.chrom} --threads 8 --memory 10000
 
 		# Clean up tmp outputs
 		rm full_{wildcards.chrom}.vcf
@@ -336,7 +340,9 @@ rule plink_ROH:
 		--bfile PAUL4_{wildcards.chrom} \
 		--out PAUL4_{wildcards.chrom} \
 		--allow-extra-chr \
-		--homozyg
+		--homozyg \
+		--homozyg-kb 100 \
+		--memory 10000
 		"""
 
 ### Rule to combine plink ROH estimates into one table

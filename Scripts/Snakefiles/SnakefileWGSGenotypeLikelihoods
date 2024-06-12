@@ -33,7 +33,7 @@ rule all:
 rule make_mask:
 	input:
 		autosome = REF_DIR + "/autosome_regions.bed",
-		mask = REF_DIR + "/Annotation/repeats.bed",
+		mask = REF_DIR + "/Annotation/repeats_major.bed",
 		problematic = REF_DIR + "/problematic_regions.bed"
 	output: OUT_DIR + "/autosome_regions_masked"
 	threads: 1

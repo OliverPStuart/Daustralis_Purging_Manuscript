@@ -92,7 +92,7 @@ rule make_beds:
 		bedtools merge -i tmp1_{params.prefix} > tmp2_{params.prefix}
 
 		# Remove anything repetitive
-		bedtools subtract -a tmp2_{params.prefix} -b {params.ref}/Annotation/repeats.bed > tmp3_{params.prefix}
+		bedtools subtract -a tmp2_{params.prefix} -b {params.ref}/Annotation/repeats_major.bed > tmp3_{params.prefix}
 
 		# Remove anything problematic identified by ngsParalog
 		bedtools subtract -a tmp3_{params.prefix} -b {params.ref}/problematic_regions.bed | \
