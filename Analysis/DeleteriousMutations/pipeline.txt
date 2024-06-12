@@ -80,7 +80,7 @@ awk '$3 == "mRNA"' | \
 cut -f9 | \
 cut -d ";" -f2,4,5 | \
 sed 's/Parent=//g' | \
-sed 's/_[[:alnum:]]\+=//g' | \
+sed -E 's/_e?AED=//g' | \
 tr ";" "\t" >> gene_scores.txt
 
 # We're also going to use the ROH bed files generated in ../GenotypeLikelihoodROH

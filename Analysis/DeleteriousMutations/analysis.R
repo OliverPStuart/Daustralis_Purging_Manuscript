@@ -65,8 +65,11 @@ rm(sites)
 
 # Give variants inside genes their AED score
 
+scores <- read.table("gene_scores.txt",header=T,stringsAsFactors = F)
+
 intergenic <- effects %>% filter(is.na(Gene) == T)
 genic <- effects %>% filter(is.na(Gene) == F)
+genic <- merge(genic,scores)
 effects <- rbind.fill(genic,intergenic)
 rm(genic,intergenic)
 

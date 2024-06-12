@@ -49,7 +49,7 @@ p <- depths %>%
         panel.grid=element_blank())
 
 png(paste0(FIGURE_DIR,"/PAUL4_Depth_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=5,height=3,units='in')
+    res=300,width=6,height=3.5,units='in')
 plot(p)
 dev.off()
 
@@ -215,7 +215,13 @@ p1 <- H %>%
   geom_line() +
   geom_area() +
   scale_x_continuous(expand=c(0,0),lim=c(1,nrow(H)),breaks=Locations$Locations,labels=Locations$Chromosome) +
-  scale_y_continuous(breaks=y_labels,labels=rect_breaks) + 
+  scale_y_continuous(breaks=y_labels,
+                     labels=c(expression(0),
+                              expression(2%*%10^-4),
+                              expression(4%*%10^-4),
+                              expression(6%*%10^-4),
+                              expression(8%*%10^-4),
+                              expression(1%*%10^-3))) + 
   coord_cartesian(ylim=c(ymin,ymax),expand=F) + 
   scale_colour_manual(unique(H$Chromosome),values=colours) +
   scale_fill_manual(unique(H$Chromosome),values=colours) +
@@ -246,12 +252,21 @@ H_v_length <- tmp %>%
   geom_smooth(method="lm",colour="black") +
   geom_point(size=3,pch=21,colour="black",aes(fill=Chromosome)) + 
   scale_fill_manual(unique(H$Chromosome),values=colours) +
-  scale_y_continuous(limits=c(0-0.00003,6e-4+0.00003),expand=c(0,0)) + 
+  scale_y_continuous(limits=c(0-0.00003,6e-4+0.00003),expand=c(0,0),
+                     breaks=seq(from=0,to=1e-3,by=2e-4),
+                     labels=c(expression(0),
+                       expression(2%*%10^-4),
+                       expression(4%*%10^-4),
+                       expression(6%*%10^-4),
+                       expression(8%*%10^-4),
+                       expression(1%*%10^-3))) + 
+  scale_x_continuous(breaks=c(1e8,2e8,3e8,4e8),
+                     labels=c(1,2,3,4)) +
   theme_bw() + 
   theme(axis.ticks=element_blank(),
         panel.grid=element_blank(),
         legend.position="none") + 
-  labs(x="Chromosome length (bp)",
+  labs(x=expression(paste("Chromosome length (",bp%*%10^8,")")),
        y="Weighted mean H") + 
   annotate(geom="text",
            x=3.6e8,
@@ -284,11 +299,20 @@ p2 <- islands %>%
   scale_y_continuous(limits=c(0,6.5),expand=c(0,0)) +
   scale_fill_manual(breaks=c("Chordata","Insecta","D. australis"),
                     values=c("grey88","grey64","cornflowerblue")) + 
-  scale_x_continuous(trans="log10") +
+  scale_x_continuous(trans="log10",
+                     breaks=c(2e-4,2e-3,2e-2),
+                     labels=c(expression(2%*%10^-4),
+                              expression(2%*%10^-3),
+                              expression(2%*%10^-2))) +
+  # scale_x_continuous(trans="log10",
+  #                    breaks=c(1e-4,1e-3,1e-2),
+  #                    labels=c(expression(1%*%10^-4),
+  #                             expression(1%*%10^-3),
+  #                             expression(1%*%10^-2))) +
   theme_bw() + 
   theme(axis.text.y=element_blank(),
         axis.title.y=element_blank(),
-        axis.ticks.y=element_blank(),
+        axis.ticks=element_blank(),
         legend.position=c(0.9,0.9),
         legend.title = element_blank(),
         legend.background = element_rect(colour="black"),
@@ -416,7 +440,7 @@ tmp <- merge(count_function(roh_plink,label_="PLINK"),
 ROHs_count_figure <- tmp %>%
   ggplot(aes(x=Bin,y=Count,fill=Method)) + 
   geom_bar(stat="identity",position=position_dodge(),colour="black") + 
-  scale_y_continuous(limits=c(0,750),expand=c(0,0)) + 
+  scale_y_continuous(limits=c(0,1700),expand=c(0,0)) + 
   theme_bw() + 
   theme(axis.ticks=element_blank(),
         panel.grid=element_blank(),

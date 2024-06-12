@@ -157,3 +157,4 @@ mean_het %>% filter(Pop != "Wild",Depth == "low",Sample != "C01220") %>% t.test(
 
 mean_het %>% filter(Pop != "Wild",Depth == "mid") %>% t.test(mean_het~Pop,data=.)
 mean_het %>% filter(Pop != "Wild",Depth == "mid",Sample != "C01220") %>% t.test(mean_het~Pop,data=.)
+
