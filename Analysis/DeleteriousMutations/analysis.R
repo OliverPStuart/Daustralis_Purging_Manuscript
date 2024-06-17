@@ -220,7 +220,8 @@ p <- change_data %>%
         strip.background = element_blank(),
         strip.text = element_blank(),
         axis.title.y=element_blank(),
-        axis.text=element_text(size=10),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_blank(),
         panel.grid=element_blank(),
         legend.position="none") + 
   labs(x="Frequency difference\nin captivity") +
@@ -395,9 +396,10 @@ p <- bootstraps %>%
   theme(axis.ticks=element_blank(),
         axis.title.y=element_blank(),
         panel.grid = element_blank(),
-        axis.text=element_text(size=10),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_blank(),
         legend.position="none") + 
-  scale_x_continuous(limits=c(0.48,0.77),breaks=c(0.55,0.65,0.75),labels=c(55,65,75)) +
+  scale_x_continuous(limits=c(0.51,0.76),breaks=c(0.55,0.65,0.75),labels=c(55,65,75)) +
   labs(x="% variants in\nlow ROH regions") ; p
 # Plot
 

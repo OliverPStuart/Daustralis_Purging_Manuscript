@@ -65,7 +65,7 @@ p <- ggplot(samples,aes(x=PC1,y=PC2,fill=Pop)) +
 # Save figure
 
 png(paste0(FIGURE_DIR,"/pcangsd_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=5,height=5,units='in')
+    res=300,width=5,height=3.5,units='in')
 plot(p)
 dev.off()
 

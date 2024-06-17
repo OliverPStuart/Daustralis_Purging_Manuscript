@@ -202,7 +202,7 @@ s_stats <- H %>%
 
 # Make a final label to get genome wide average
 
-p1 <- H %>%
+genome_wide_h <- H %>%
   filter(Coverage > 0.1) %>%
   ggplot(aes(x=Bin,group=Chromosome,y=H,colour=Chromosome,fill=Chromosome)) +
   theme_bw() +
@@ -217,11 +217,11 @@ p1 <- H %>%
   scale_x_continuous(expand=c(0,0),lim=c(1,nrow(H)),breaks=Locations$Locations,labels=Locations$Chromosome) +
   scale_y_continuous(breaks=y_labels,
                      labels=c(expression(0),
-                              expression(2%*%10^-4),
-                              expression(4%*%10^-4),
-                              expression(6%*%10^-4),
-                              expression(8%*%10^-4),
-                              expression(1%*%10^-3))) + 
+                              expression(2%*%10^-3),
+                              expression(4%*%10^-3),
+                              expression(6%*%10^-3),
+                              expression(8%*%10^-3),
+                              expression(1%*%10^-2))) + 
   coord_cartesian(ylim=c(ymin,ymax),expand=F) + 
   scale_colour_manual(unique(H$Chromosome),values=colours) +
   scale_fill_manual(unique(H$Chromosome),values=colours) +
@@ -230,16 +230,19 @@ p1 <- H %>%
 
 png(paste0(FIGURE_DIR,"/genome_wide_H_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=10,height=5,units='in')
-plot(p1)
+plot(genome_wide_h)
 dev.off()
 
 # Now we're going to look at the overall H for each chromosome
 # We'll simply calculate a mean and a standard deviation, and plot this against chromosome length
+# We take every second row to get non-overlapping windows
 
 tmp <- H %>%
   filter(Coverage > 0.1) %>%
   group_by(Chromosome) %>%
-  summarise(W_Mean = weighted.mean(H,Coverage*(End-Start)),
+  filter(row_number() %% 2 == 0) %>%
+#  sample_n(100000,replace=T) %>%
+  summarise(W_Mean = weighted.mean(H,Coverage),
             LQuantile = quantile(H,0.025),
             UQuantile = quantile(H,0.975),
             Length = first(max(End)))
@@ -252,14 +255,13 @@ H_v_length <- tmp %>%
   geom_smooth(method="lm",colour="black") +
   geom_point(size=3,pch=21,colour="black",aes(fill=Chromosome)) + 
   scale_fill_manual(unique(H$Chromosome),values=colours) +
-  scale_y_continuous(limits=c(0-0.00003,6e-4+0.00003),expand=c(0,0),
-                     breaks=seq(from=0,to=1e-3,by=2e-4),
-                     labels=c(expression(0),
-                       expression(2%*%10^-4),
+  scale_y_continuous(limits=c(1.95e-4-0.00003,6.05e-4+0.00003),expand=c(0,0),
+                     breaks=seq(from=2e-4,to=6e-4,by=1e-4),
+                     labels=c(expression(2%*%10^-4),
+                       expression(3%*%10^-4),
                        expression(4%*%10^-4),
-                       expression(6%*%10^-4),
-                       expression(8%*%10^-4),
-                       expression(1%*%10^-3))) + 
+                       expression(5%*%10^-4),
+                       expression(6%*%10^-4))) + 
   scale_x_continuous(breaks=c(1e8,2e8,3e8,4e8),
                      labels=c(1,2,3,4)) +
   theme_bw() + 
@@ -267,7 +269,7 @@ H_v_length <- tmp %>%
         panel.grid=element_blank(),
         legend.position="none") + 
   labs(x=expression(paste("Chromosome length (",bp%*%10^8,")")),
-       y="Weighted mean H") + 
+       y="Heterozygosity") + 
   annotate(geom="text",
            x=3.6e8,
            y=5.6e-4,
@@ -275,7 +277,7 @@ H_v_length <- tmp %>%
                         round(summary(tmp_model)$coefficients[2,4],3))) ; H_v_length
 
 png(paste0(FIGURE_DIR,"/H_v_chrom_length_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=6,height=6,units='in')
+    res=300,width=5,height=5,units='in')
 plot(H_v_length)
 dev.off()
 
@@ -293,11 +295,12 @@ islands <- rbind(islands,
   ungroup()
 
 arrow_position=s_stats$W_Mean-0.000025
-p2 <- islands %>%
+published_h <- islands %>%
   ggplot(aes(x=Observed_H,fill=Clade)) + 
   geom_histogram(colour="black",bins=30) + 
   scale_y_continuous(limits=c(0,6.5),expand=c(0,0)) +
   scale_fill_manual(breaks=c("Chordata","Insecta","D. australis"),
+                    labels=c("Chordata","Insecta",expression(italic("D. australis"))),
                     values=c("grey88","grey64","cornflowerblue")) + 
   scale_x_continuous(trans="log10",
                      breaks=c(2e-4,2e-3,2e-2),
@@ -313,18 +316,18 @@ p2 <- islands %>%
   theme(axis.text.y=element_blank(),
         axis.title.y=element_blank(),
         axis.ticks=element_blank(),
-        legend.position=c(0.9,0.9),
+        legend.position=c(0.85,0.85),
         legend.title = element_blank(),
         legend.background = element_rect(colour="black"),
         panel.grid=element_blank()) + 
-  labs(x="Genomic H") + 
+  labs(x="Heterozygosity") + 
   annotate(geom="segment",
            y=3,yend=2.2,x=arrow_position,xend=arrow_position,
            arrow = arrow(type = "closed", length = unit(0.02, "npc"))) ; p2
 
 png(paste0(FIGURE_DIR,"/published_genomic_H_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=6,height=6,units='in')
-plot(p2)
+    res=300,width=5,height=5,units='in')
+plot(published_h)
 dev.off()
 
 # Also write list of species with lower H
@@ -332,6 +335,68 @@ dev.off()
 islands %>% filter(Observed_H <= s_stats$W_Mean)
 
 # Baiji, Cheetah, Island_fox, Snow_leopard, Tasmanian_devil
+
+# Finally, make a plot of per chromosome GC content
+
+paul4 <- read.table("paul4_gc.txt",header=T,stringsAsFactors = F)
+lengths <- read.table(paste0(REF_DIR,"/scaffold_lengths"),header=F,stringsAsFactors = F)
+colnames(lengths) <- c("chr","total_length")
+
+paul4_gc <- paul4 %>% 
+  group_by(chr) %>% 
+#  sample_n(10000,replace=T) %>% 
+  mutate(GC = (G+C)/length) %>%
+  dplyr::summarise(mean_GC=mean(GC)) %>%
+  merge(.,lengths) 
+
+tmp_model <- lm(mean_GC~total_length,data=paul4_gc)
+summary(tmp_model)
+
+paul4_gc_plot <- paul4_gc %>%
+  ggplot(aes(x=total_length,y=mean_GC*100)) + 
+  geom_smooth(method="lm",colour="black") +
+  geom_point(size=3,pch=21,colour="black",aes(fill=chr)) + 
+  scale_fill_manual(unique(paul4_gc$chr),values=colours) +
+  scale_x_continuous(breaks=c(1e8,2e8,3e8,4e8),
+                     labels=c(1,2,3,4)) +
+  scale_y_continuous(limits=c(38.1,39.25),expand=c(0,0),
+                     breaks=seq(from=38.2,to=39.2,0.2)) +
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.grid=element_blank(),
+        legend.position="none") + 
+  labs(x=expression(paste("Chromosome length (",bp%*%10^8,")")),
+       y="GC content (%)") +
+  annotate(geom="text",
+           x=3.6e8,
+           y=39.1,
+           label=paste0("p = ",
+                        round(summary(tmp_model)$coefficients[2,4],3)))
+
+png(paste0(FIGURE_DIR,"/paul_gc_content_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=5,height=5,units='in')
+plot(paul4_gc_plot)
+dev.off()
+
+# Also save all of these as one figure
+
+layout <- "
+AAAA
+AAAA
+BBDD
+CCDD
+"
+paul4_summary <- genome_wide_h + 
+  (H_v_length + theme(axis.text.x=element_blank())) + 
+  paul4_gc_plot + 
+  published_h + 
+  plot_layout(design = layout,axis_titles = "collect")
+
+png(paste0(FIGURE_DIR,"/paul_summary_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=10.5,height=10.5,units='in')
+plot(paul4_summary)
+dev.off()
+
 
 ##### Genome wide ROH
 

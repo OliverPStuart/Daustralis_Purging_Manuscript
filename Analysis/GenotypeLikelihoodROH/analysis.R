@@ -142,9 +142,10 @@ p <- ggplot(d_i) +
   theme_bw() + 
   theme(panel.grid = element_blank(),
         axis.ticks=element_blank(),
-        axis.text.y=element_blank()
+        axis.text.y=element_blank(),
         #        axis.title.x=element_blank(),
-        #        axis.text.x=element_blank()
+        #        axis.text.x=element_blank(),
+        legend.position="none"
   ) + 
   xlab("Position") + 
   my_fill_3 + my_col_3 + 
@@ -156,7 +157,7 @@ p <- ggplot(d_i) +
 # Save figure
 
 png(paste0(FIGURE_DIR,"/roh_location_example_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=7,height=6,units='in')
+    res=300,width=7,height=2.5,units='in')
     plot(p)
 dev.off()
 
