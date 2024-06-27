@@ -226,7 +226,7 @@ genome_wide_h <- H %>%
   scale_colour_manual(unique(H$Chromosome),values=colours) +
   scale_fill_manual(unique(H$Chromosome),values=colours) +
   labs(y="Heterozygosity",x="Chromosome") + 
-  geom_hline(yintercept=s_stats$W_Mean,linetype="dashed") ; p1
+  geom_hline(yintercept=s_stats$W_Mean,linetype="dashed") ; genome_wide_h
 
 png(paste0(FIGURE_DIR,"/genome_wide_H_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=10,height=5,units='in')
@@ -398,6 +398,20 @@ plot(paul4_summary)
 dev.off()
 
 
+# One final figure...
+
+gc_bic <- read.table("paul4_gc_big_windows.txt",header=T)
+colnames(gc_bic) <- c("Chromosome","Start","End","A","C","G","T")
+gc_bic <- merge(gc_bic,H)
+gc_bic <- gc_bic %>%
+  mutate(GC = (G+C)/(End-Start))
+
+gc_bic %>%
+  ggplot(aes(x=GC,y=H)) + 
+  geom_point() + 
+  facet_wrap(~Chromosome) + 
+  geom_smooth(method="lm")
+
 ##### Genome wide ROH
 
 # Set environment
@@ -466,8 +480,8 @@ ROHs_figure <- tmp %>%
         panel.grid=element_blank(),
         legend.position=c(0.85,0.86),
         legend.background = element_rect(colour="black")) + 
-  scale_x_discrete(labels=c("> 100 kb","> 1 Mb",">2 Mb","> 5 Mb")) + 
-  labs(x="Length",y=expression(F[ROH])) + 
+  scale_x_discrete(labels=c("> 100 kb","> 1 Mb","> 2 Mb","> 5 Mb")) + 
+  labs(x="Length cutoff",y=expression(F[ROH])) + 
   scale_fill_brewer(palette = "Blues")
 
 png(paste0(FIGURE_DIR,"/roh_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),

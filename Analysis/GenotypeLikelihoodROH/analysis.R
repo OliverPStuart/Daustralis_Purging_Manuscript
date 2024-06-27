@@ -432,6 +432,37 @@ png(paste0(FIGURE_DIR,"/roh_parameter_comp_",format(Sys.time(),"%Y%m%d"),".png")
 plot(p)
 dev.off()
 
+# Now also plot FROH
+
+d_lhisi <- data.frame(Pop="LHISI",
+                      F_ROH=1-lhisi_K9_rate2_results@realized[,9])
+d_lhip <- data.frame(Pop="LHIP",
+                     F_ROH=1-lhip_K9_rate2_results@realized[,9])
+fis_specific <- rbind(d_lhisi,d_lhip)
+
+p <- ggplot(fis_specific,aes(y=F_ROH,x=Pop)) + 
+  stat_summary(aes(x=Pop,y=F_ROH),
+               fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 0.5) +
+  geom_point(pch=21,
+             size=4,
+             position=position_jitterdodge(dodge.width=1,jitter.width=0.5),
+             aes(fill=Pop)) +  
+  scale_y_continuous(limits=c(0,1)) +
+  theme_bw() +
+  theme(axis.text.x=element_blank(),
+        axis.title.x=element_blank(),
+        axis.ticks=element_blank(),
+        panel.grid = element_blank()) + 
+  my_fill_3 + 
+  labs(y=expression(F[ROH]))
+
+png(paste0(FIGURE_DIR,"/froh_with_pop_specific",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=7,height=6,units='in')
+plot(p)
+dev.off()
+
+
 # What is the difference in F between lhip
 # and lhisi when only considering population
 # specific allele frequencies
@@ -449,3 +480,159 @@ output %>% t.test(fs~pop,data=.)
 output %>% filter(names != "C01220") %>% t.test(fs~pop,data=.)
 
 # No
+
+# Now redo the tests for comparing length and number of ROH between hybrid and wild
+
+d_lhisi <- lhisi_K9_rate2_results@hbdseg
+d_lhisi$Pop <- "LHISI"
+d_lhisi$id <- paste0("LHISI_",d_lhisi$id)
+
+d_lhip <- lhip_K9_rate2_results@hbdseg
+d_lhip$Pop <- "LHIP"
+d_lhip$id <- paste0("LHIP_",d_lhip$id)
+
+# FIND C01220
+c01220 <- d_lhip %>% group_by(id) %>% summarise(froh=sum(length)) %>% filter(froh==max(froh)) %>% pull(id)
+
+d <- rbind(d_lhisi,d_lhip)
+
+d$length_class <- cut(d$length,
+                      breaks=c(0, 100000, 300000, 500000, 1000000, 1000000000),
+                      labels=c('0 - 0.1', '0.1 - 0.3', '0.3 - 0.5', '0.5 - 1','>1'))
+
+d$length_class <- factor(d$length_class,
+                         levels=c('0 - 0.1', '0.1 - 0.3', '0.3 - 0.5', '0.5 - 1','>1'),
+                         labels=c('0 - 0.1', '0.1 - 0.3', '0.3 - 0.5', '0.5 - 1','>1'))
+
+# Number without filtering C01220
+
+d %>% 
+  group_by(length_class,id) %>%
+  dplyr::summarise(n_roh = n(),
+                   Pop=first(Pop)) %>%
+  dplyr::select(Pop,length_class,n_roh) %>%
+  pivot_wider(names_from=Pop,values_from=n_roh) %>%
+  group_by(length_class) %>%
+  dplyr::mutate(lhisi_mean = mean(unlist(LHISI)),
+                lhip_mean = mean(unlist(LHIP)),
+                p_value = t.test(unlist(LHISI), unlist(LHIP))$p.value,
+                t_value = t.test(unlist(LHISI), unlist(LHIP))$statistic,
+                df = t.test(unlist(LHISI), unlist(LHIP))$parameter
+  )
+
+# Filter C01220
+
+d %>% filter(id != c01220) %>%
+  group_by(length_class,id) %>%
+  dplyr::summarise(n_roh = n(),
+                   Pop=first(Pop)) %>%
+  dplyr::select(Pop,length_class,n_roh) %>%
+  pivot_wider(names_from=Pop,values_from=n_roh) %>%
+  group_by(length_class) %>%
+  dplyr::mutate(lhisi_mean = mean(unlist(LHISI)),
+                lhip_mean = mean(unlist(LHIP)),
+                p_value = t.test(unlist(LHISI), unlist(LHIP))$p.value,
+                t_value = t.test(unlist(LHISI), unlist(LHIP))$statistic,
+                df = t.test(unlist(LHISI), unlist(LHIP))$parameter
+  )
+
+# Log length_sum without filtering C01220
+
+d %>% 
+  group_by(length_class,id) %>%
+  dplyr::summarise(length_sum = log(sum(length)),
+                   Pop=first(Pop)) %>%
+  dplyr::select(Pop,length_class,length_sum) %>%
+  pivot_wider(names_from=Pop,values_from=length_sum) %>%
+  group_by(length_class) %>%
+  dplyr::mutate(lhisi_mean = mean(unlist(LHISI)),
+                lhip_mean = mean(unlist(LHIP)),
+                p_value = t.test(unlist(LHISI), unlist(LHIP))$p.value,
+                t_value = t.test(unlist(LHISI), unlist(LHIP))$statistic,
+                df = t.test(unlist(LHISI), unlist(LHIP))$parameter
+  )
+
+# Filter C01220
+
+d %>% filter(id != c01220) %>%
+  group_by(length_class,id) %>%
+  dplyr::summarise(length_sum = log(sum(length)),
+                   Pop=first(Pop)) %>%
+  dplyr::select(Pop,length_class,length_sum) %>%
+  pivot_wider(names_from=Pop,values_from=length_sum) %>%
+  group_by(length_class) %>%
+  dplyr::mutate(lhisi_mean = mean(unlist(LHISI)),
+                lhip_mean = mean(unlist(LHIP)),
+                p_value = t.test(unlist(LHISI), unlist(LHIP))$p.value,
+                t_value = t.test(unlist(LHISI), unlist(LHIP))$statistic,
+                df = t.test(unlist(LHISI), unlist(LHIP))$parameter
+  )
+
+# Also redo this plot
+
+p1 <- d %>%
+  group_by(length_class,id) %>%
+  dplyr::summarise(total_roh = sum(length),
+                   Pop=first(Pop),
+                   Metric="Length") %>%
+  ggplot() +
+  stat_summary(aes(x=length_class,y=total_roh,group=Pop),
+               fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 1,position=position_dodge()) +
+  geom_point(pch=21,size=3.5,
+             position=position_jitterdodge(jitter.width=0.2,dodge.width=1),
+             aes(x=length_class,y=total_roh,fill=Pop,group=Pop)) +
+  scale_y_continuous(
+    trans="log10",
+    limits=c(7e5,1.5e9),
+    breaks=c(1e6,1e7,1e8,1e9),
+    labels=c(expression(1%*%10^6),
+             expression(1%*%10^7),
+             expression(1%*%10^8),
+             expression(1%*%10^9))
+  ) +
+  theme_bw() +
+  theme(axis.ticks=element_blank(),
+        panel.border=element_rect(colour="black",fill=NA),
+        axis.line = element_line(),
+        axis.text.x=element_text(angle=30,hjust=1,vjust=1),
+        panel.grid=element_blank()) +
+  ylab("Length of genome\nin ROH (bp)") + xlab("Length (Mbp)") +
+  my_fill_3
+
+
+p2 <- d %>%
+  group_by(length_class,id) %>%
+  dplyr::summarise(n_roh = n(),
+                   Pop=first(Pop),
+                   Metric="Number") %>%
+  ggplot() +
+  stat_summary(aes(x=length_class,y=n_roh,group=Pop),
+               fun = median, fun.min = median, fun.max = median,
+               geom = "crossbar", width = 1,position=position_dodge()) +
+  geom_point(pch=21,size=3.5,
+             position=position_jitterdodge(jitter.width=0.2,dodge.width = 1),
+             aes(x=length_class,y=n_roh,fill=Pop,group=Pop)) +
+  scale_y_continuous(
+  ) +
+  theme_bw() +
+  theme(axis.ticks=element_blank(),
+        panel.border=element_rect(colour="black",fill=NA),
+        axis.line = element_line(),
+        axis.text.x=element_text(angle=30,hjust=1,vjust=1),
+        panel.grid=element_blank()) +
+  ylab("Number of ROH") + xlab("Length (Mbp)") +
+  my_fill_3
+
+p <- (p1 + theme(axis.title.x=element_blank(),axis.text.x=element_blank())) /
+  p2 +
+  plot_layout(guides="collect")
+
+# Save figure
+
+png(paste0(FIGURE_DIR,"/roh_tally_different_base_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=7,height=6,units='in')
+plot(p)
+dev.off()
+
+

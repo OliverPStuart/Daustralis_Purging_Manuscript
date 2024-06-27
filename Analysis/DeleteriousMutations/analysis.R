@@ -1,10 +1,5 @@
 ### Script to analyse and plot H from lcWGS
 
-# Set environment
-
-source("../../config.R")
-setwd(paste0(WORKING_DIR,"/DeleteriousMutations"))
-
 # Libraries
 
 library(ggplot2)
@@ -14,6 +9,11 @@ library(tidyr)
 library(ggnewscale)
 library(ggResidpanel)
 options(dplyr.summarise.inform = FALSE)
+
+# Set environment
+
+source("../../config.R")
+setwd(paste0(WORKING_DIR,"/DeleteriousMutations"))
 
 # My favourite function
 
@@ -29,8 +29,17 @@ lhisi <- read.table("../AlleleFrequencies/lhisi.mafs.gz",
                     header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
 lhip <- read.table("../AlleleFrequencies/lhip.mafs.gz",
                    header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
-wild <- read.table("../AlleleFrequencies/Wild.mafs.gz",header=T,
+wild <- read.table("../AlleleFrequencies/wild.mafs.gz",header=T,
                    stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+
+lhisi <- read.table("lhisi.mafs.gz",
+                    header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+lhip <- read.table("lhip.mafs.gz",
+                   header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+wild <- read.table("wild.mafs.gz",header=T,
+                   stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
+
+
 colnames(lhisi) <- c("Scaffold","Position","MAF_lhisi","N_lhisi")
 colnames(lhip) <- c("Scaffold","Position","MAF_lhip","N_lhip")
 colnames(wild) <- c("Scaffold","Position","MAF_wild","N_wild")
@@ -96,6 +105,28 @@ effects <- merge(effects,lhip,all.x=T)
 effects$ID <- paste0(effects$Scaffold,"_",effects$Position)
 
 rm(lhisi,lhip,wild)
+
+# Tally up numbers of segregating variants in all groups
+
+# How many sites detected?
+effects %>% filter(!is.na(fate_wild)) %>% nrow()
+effects %>% filter(!is.na(fate_lhisi)) %>% nrow()
+effects %>% filter(!is.na(fate_lhip)) %>% nrow()
+
+# How many segregating of each kind?
+WILD <- effects %>% filter(fate_wild=="segregating") %>% xtabs(data=.,formula=~Variant_Effect)
+LHISI <- effects %>% filter(fate_lhisi=="segregating") %>% xtabs(data=.,formula=~Variant_Effect)
+LHIP <- effects %>% filter(fate_lhip=="segregating") %>% xtabs(data=.,formula=~Variant_Effect)
+WILD
+LHISI
+LHIP
+
+# Chi-squared test to see if the proportion are different
+rbind(WILD,LHISI,LHIP) %>%
+  chisq.test()
+WILD/sum(WILD)
+LHIP/sum(LHIP)
+LHISI/sum(LHISI)
 
 # Classifying variants based on presence in putative ROH in the three populations
 
@@ -375,6 +406,7 @@ bootstraps$Variant_Effect <- factor(bootstraps$Variant_Effect,
                                     levels=c("HIGH","MODERATE","LOW","MODIFIER"),
                                     labels=c("HIGH","MODERATE","LOW","MODIFIER"))
 
+
 p <- bootstraps %>%
   ggplot() +
   geom_errorbar(aes(y=Pop,x=ratio,xmin=lower_conf_95,xmax=upper_conf_95,fill=Variant_Effect),
@@ -399,7 +431,10 @@ p <- bootstraps %>%
         axis.text.x=element_text(size=10),
         axis.text.y=element_blank(),
         legend.position="none") + 
-  scale_x_continuous(limits=c(0.51,0.76),breaks=c(0.55,0.65,0.75),labels=c(55,65,75)) +
+  scale_x_continuous(
+    limits=c(0.51,0.78),
+    breaks=c(0.55,0.65,0.75),
+    labels=c(55,65,75)) +
   labs(x="% variants in\nlow ROH regions") ; p
 # Plot
 

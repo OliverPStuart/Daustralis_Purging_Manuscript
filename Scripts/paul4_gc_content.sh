@@ -47,4 +47,12 @@ echo -e "chr\tlength\tA\tC\tG\tT" > paul4_gc.txt
 seqtk comp -r masked_random_regions.bed PAUL4_Consensus.fasta | \
 awk '{print $1"\t"$3-$2"\t"$4"\t"$5"\t"$6"\t"$7}' >> paul4_gc.txt
 
+# Also calculate GC for the same windows used to calculate H
+# Non overlapping
+# We do another simple regression later
+bedtools makewindows -g lhisi.genome -w 1000000 > big_windows.bed
+echo -e "chr\tstart\tend\t\tA\tC\tG\tT" > paul4_gc_big_windows.txt
+seqtk comp -r big_windows.bed PAUL4_Consensus.fasta | \
+awk '{print $1"\t"$2"\t"$3"\t"$4"\t"$5"\t"$6"\t"$7}' >> paul4_gc_big_windows.txt
+
 # Analyse in R

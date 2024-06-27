@@ -113,7 +113,8 @@ mean_het %>% filter(Pop != "Wild",Depth == "5-8X",Sample != "C01220") %>%
 mean_het <- het %>% group_by(Sample,Depth) %>% 
   mutate(weight_het = Het * Sites) %>%
   dplyr::summarise(mean_het = sum(weight_het)/sum(Sites),
-                   Pop=first(Pop),Sex=first(Sex))
+                   Pop=first(Pop),Sex=first(Sex),
+                   Sites=sum(Sites))
 
 # Rename populations
 
@@ -158,3 +159,11 @@ mean_het %>% filter(Pop != "Wild",Depth == "low",Sample != "C01220") %>% t.test(
 mean_het %>% filter(Pop != "Wild",Depth == "mid") %>% t.test(mean_het~Pop,data=.)
 mean_het %>% filter(Pop != "Wild",Depth == "mid",Sample != "C01220") %>% t.test(mean_het~Pop,data=.)
 
+# Also save table for paper
+
+mean_het %>%
+  arrange(Depth,Pop,Sample) %>%
+  mutate(Depth=recode(Depth,"low"="Low","mid"="Mid"),
+         Pop=recode(Pop,"Wild"="Wild","LHIP"="Hybrid","LHISI"="Captive")) %>%
+  select(Sample,Depth,Pop,Sites,mean_het,Sex) %>%
+  write.table(.,"mean_het_summarised.txt",col.names=T,row.names=F,sep="\t",quote=F)

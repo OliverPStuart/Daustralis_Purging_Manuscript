@@ -1,12 +1,6 @@
 
 # Plotting coverage statistics for WGS data
 
-# Set environment
-
-source("../../config.R")
-source(paste0(DATA_DIR,"/colours.R"))
-setwd(paste0(WORKING_DIR,"/AnalysingWGSCoverage"))
-
 # Libraries
 
 library(ggplot2)
@@ -14,6 +8,12 @@ library(scales)
 library(tidyr)
 library(dplyr)
 library(patchwork)
+
+# Set environment
+
+source("../../config.R")
+source(paste0(DATA_DIR,"/colours.R"))
+setwd(paste0(WORKING_DIR,"/AnalysingWGSCoverage"))
 
 # Get sample details
 details <- read.table(paste0(HOME_DIR,"/References/wgs_sample_details.txt"),
@@ -166,3 +166,18 @@ plot(p)
 dev.off()
 
 # This should give us enough information to filter on depth
+
+# Also print out values for table
+
+write.table(data %>%
+  mutate(Type=ifelse(Chrom=="CM057009.1","Sex","Autosome")) %>%
+  group_by(Sample,Type) %>%
+  summarise(Mean=weighted.mean(Mean,End-Start)) %>%
+  pivot_wider(names_from="Type",values_from="Mean"),
+  "lcwgs_mean_coverage.txt",col.names=T,row.names=F,sep="\t",quote=F)
+
+write.table(depths %>% 
+  group_by(Type) %>%
+  summarise(Mean=weighted.mean(Depth,End-Start)),
+  "paul4_mean_coverage.txt",col.names=T,row.names=F,sep="\t",quote=F)
+
