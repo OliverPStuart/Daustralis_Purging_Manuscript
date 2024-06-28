@@ -25,7 +25,13 @@ for scaf in $(cat ${REF_DIR}/autosome_names)
 
 done
 
-bedtools subtract -a tmp.bed -b ${REF_DIR}/problematic_regions.bed | \
+sort -k1,1 -k2,2n tmp.bed | uniq > tmp_uniq.bed
+
+cat ../ngsParalogAnalysis/problematic_regions.bed ${REF_DIR}/Annotation/repeats_major.bed |
+sort -k1,1 -k2,2n | \
+bedtools merge -i stdin > tmp_2.bed
+
+bedtools subtract -a tmp_uniq.bed -b tmp_2.bed | \
 cut -f1,3,4,5 > vars.txt
 
 rm tmp*

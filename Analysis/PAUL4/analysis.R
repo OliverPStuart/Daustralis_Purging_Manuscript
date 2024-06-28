@@ -414,6 +414,8 @@ gc_bic %>%
 
 ##### Genome wide ROH
 
+##### 2024-06-28 No longer including PLINK in results
+
 # Set environment
 
 source("../../config.R")
@@ -429,10 +431,14 @@ library(patchwork)
 library(cowplot)
 library(readxl,       warn.conflicts = F)
 
+# Get lengths
+lengths <- read.table("../../References/scaffold_lengths")[1:16,]
+colnames(lengths) <- c("CHR","Total")
+
 # Plink
 
-roh_plink <- readr::read_table("GENOME_WIDE_ROH_PLINK.txt")
-roh_plink <- roh_plink %>% mutate(Length = POS2-POS1)
+#roh_plink <- readr::read_table("GENOME_WIDE_ROH_PLINK.txt")
+#roh_plink <- roh_plink %>% mutate(Length = POS2-POS1)
 
 # BCFTOOLS
 
@@ -440,11 +446,44 @@ roh_bcf_04 <- readr::read_table("GENOME_WIDE_ROH_04_BCFTOOLS.txt") ; colnames(ro
 roh_bcf_05 <- readr::read_table("GENOME_WIDE_ROH_05_BCFTOOLS.txt") ; colnames(roh_bcf_05)[c(1,4)] <- c("CHR","Length")
 roh_bcf_06 <- readr::read_table("GENOME_WIDE_ROH_06_BCFTOOLS.txt") ; colnames(roh_bcf_06)[c(1,4)] <- c("CHR","Length")
 
-### FROH with different cutoffs
+### Get a single data.frame with all lengths
 
-# Get lengths
-lengths <- read.table("../../References/scaffold_lengths")[1:16,]
-colnames(lengths) <- c("CHR","Total")
+roh_bcf_04$AF = "AF04" ; roh_bcf_05$AF = "AF05" ; roh_bcf_06$AF = "AF06"
+all_roh <- rbind(roh_bcf_04,roh_bcf_05,roh_bcf_06) %>% merge(.,lengths)
+
+# Which chromosome has the greatest proportion of homozygosity
+all_roh %>%
+  filter(AF=="AF05") %>%
+  group_by(CHR) %>%
+  summarise(FROH=sum(Length)/first(Total)) %>%
+  arrange(-FROH)
+# Which chromosome had the longest
+all_roh %>%
+  filter(AF=="AF05") %>%
+  group_by(CHR) %>%
+  filter(Length==max(Length)) %>%
+  ungroup() %>%
+  arrange(-Length)
+# Do chromosomes differ in their average lengths
+all_roh %>%
+  filter(AF=="AF05") %>%
+  group_by(CHR) %>%
+  summarise(Mean=mean(Length)) %>%
+  arrange(Mean)
+all_roh %>%
+  filter(AF=="AF05") %>%
+  group_by(CHR) %>%
+  summarise(Mean=mean(Length)) %>%
+  ungroup() %>%
+  summarise(Mean_Mean=mean(Mean),SD=sd(Mean))
+# Where are the longest ROH on the two chromosomes with the longest ROH
+all_roh %>%
+  filter(AF=="AF05",CHR %in% c("CM056996.1","CM056995.1")) %>%
+  group_by(CHR) %>%
+  arrange(-Length) %>%
+  slice_head(n=5)
+
+# Calculate ROH using different length cutoffs
 
 roh_filt <- function(cutoff = 0,dataset=NULL){
   
@@ -461,17 +500,16 @@ roh_filt <- function(cutoff = 0,dataset=NULL){
 
 cutoffs <- c(1e5,1e6,2e6,5e6)
 
-tmp <- data.frame(ROH=c(unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_plink)),
-                 unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_04)),
+tmp <- data.frame(ROH=c(unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_04)),
                  unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_05)),
                  unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_06))),
-           Length = rep(cutoffs,4),
-           Method = rep(c("PLINK",
-                          "bcftools, AF = 0.4",
-                          "bcftools, AF = 0.5",
-                          "bcftools, AF = 0.6"),each=4))
+           Length = rep(cutoffs,3),
+           Method = rep(c("AF = 0.4",
+                          "AF = 0.5",
+                          "AF = 0.6"),each=4))
 
-ROHs_figure <- tmp %>%
+ROHs_figure_1 <- tmp %>%
+  #filter(Method != "PLINK") %>%
   ggplot(aes(x=as.factor(Length),y=ROH,fill=Method)) + 
   geom_bar(stat="identity",position=position_dodge(),colour="black") + 
   scale_y_continuous(limits=c(0,1),expand=c(0,0)) + 
@@ -479,13 +517,14 @@ ROHs_figure <- tmp %>%
   theme(axis.ticks=element_blank(),
         panel.grid=element_blank(),
         legend.position=c(0.85,0.86),
-        legend.background = element_rect(colour="black")) + 
+        legend.background = element_rect(colour="black"),
+        legend.title = element_blank()) + 
   scale_x_discrete(labels=c("> 100 kb","> 1 Mb","> 2 Mb","> 5 Mb")) + 
   labs(x="Length cutoff",y=expression(F[ROH])) + 
   scale_fill_brewer(palette = "Blues")
 
 png(paste0(FIGURE_DIR,"/roh_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=7,height=7,units='in')
+    res=300,width=5.5,height=5.5,units='in')
 plot(ROHs_figure)
 dev.off()
 
@@ -500,7 +539,7 @@ count_function <- function(data=NULL,label_=NULL){
   
   if(is.null(data)){stop("supply a data.frame")}
   
-  data$Bin <- cut(data$Length,c(1e5,1e6,2e6,3e6,4e6,5e6,6e6,7e6,8e6,9e6,10e6,100e6))
+  data$Bin <- cut(data$Length,c(1e5,1e6,2e6,3e6,4e6,5e6,100e6))
   data %>% group_by(Bin) %>%
     summarise(Count = n()) %>%
     filter(!is.na(Bin)) %>%
@@ -509,32 +548,34 @@ count_function <- function(data=NULL,label_=NULL){
   
 }
 
-tmp <- merge(count_function(roh_plink,label_="PLINK"),
-      count_function(roh_bcf_04,label_="bcftools, Af = 0.4"),all=T) %>%
-  merge(.,count_function(roh_bcf_05,label_="bcftools, Af = 0.5"),all=T) %>%
-  merge(.,count_function(roh_bcf_06,label_="bcftools, Af = 0.6"),all=T) %>% 
+tmp <- count_function(roh_bcf_04,label_="AF = 0.4") %>%
+  merge(.,count_function(roh_bcf_05,label_="AF = 0.5"),all=T) %>%
+  merge(.,count_function(roh_bcf_06,label_="AF = 0.6"),all=T) %>% 
   tidyr::complete(.,Bin,Method) %>%
   tidyr::replace_na(list(Count=0))
 
-ROHs_count_figure <- tmp %>%
+tmp
+
+ROHs_figure_2 <- tmp %>%
+  #filter(Method != "PLINK") %>%
   ggplot(aes(x=Bin,y=Count,fill=Method)) + 
   geom_bar(stat="identity",position=position_dodge(),colour="black") + 
-  scale_y_continuous(limits=c(0,1700),expand=c(0,0)) + 
+  scale_y_continuous(limits=c(0,820),expand=c(0,0)) + 
   theme_bw() + 
   theme(axis.ticks=element_blank(),
         panel.grid=element_blank(),
         legend.position=c(0.85,0.86),
-        legend.background = element_rect(colour="black")) + 
+        legend.background = element_rect(colour="black"),
+        legend.title=element_blank()) + 
   scale_x_discrete(labels=c("100 kb -\n1 Mb","1 Mb -\n2 Mb",
                             "2 Mb -\n3 Mb","3 Mb -\n4 Mb","4 Mb -\n5 Mb",
-                            "5 Mb -\n6 Mb","6 Mb -\n7 Mb","7 Mb -\n8 Mb",
-                            "8 Mb -\n9 Mb","9 Mb -\n10 Mb","> 10 Mb")) + 
+                            "> 5 Mb")) + 
   labs(x="Length",y="Count") + 
   scale_fill_brewer(palette = "Blues")
 
 png(paste0(FIGURE_DIR,"/roh_count_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=7,height=7,units='in')
-plot(ROHs_count_figure)
+    res=300,width=5.5,height=5.5,units='in')
+plot(ROHs_figure_2)
 dev.off()
 
 # Also save as table

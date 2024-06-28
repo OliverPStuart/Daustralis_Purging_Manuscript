@@ -32,14 +32,6 @@ lhip <- read.table("../AlleleFrequencies/lhip.mafs.gz",
 wild <- read.table("../AlleleFrequencies/wild.mafs.gz",header=T,
                    stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
 
-lhisi <- read.table("lhisi.mafs.gz",
-                    header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
-lhip <- read.table("lhip.mafs.gz",
-                   header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
-wild <- read.table("wild.mafs.gz",header=T,
-                   stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
-
-
 colnames(lhisi) <- c("Scaffold","Position","MAF_lhisi","N_lhisi")
 colnames(lhip) <- c("Scaffold","Position","MAF_lhip","N_lhip")
 colnames(wild) <- c("Scaffold","Position","MAF_wild","N_wild")
