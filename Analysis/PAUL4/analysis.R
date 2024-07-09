@@ -253,8 +253,11 @@ summary(tmp_model)
 H_v_length <- tmp %>%
   ggplot(aes(x=Length,y=W_Mean)) + 
   geom_smooth(method="lm",colour="black") +
-  geom_point(size=3,pch=21,colour="black",aes(fill=Chromosome)) + 
-  scale_fill_manual(unique(H$Chromosome),values=colours) +
+  geom_point(size=3,pch=21,
+             #aes(fill=Chromosome),
+             fill="cornflowerblue",
+             colour="black") + 
+  #scale_fill_manual(unique(H$Chromosome),values=colours) +
   scale_y_continuous(limits=c(1.95e-4-0.00003,6.05e-4+0.00003),expand=c(0,0),
                      breaks=seq(from=2e-4,to=6e-4,by=1e-4),
                      labels=c(expression(2%*%10^-4),
@@ -323,7 +326,7 @@ published_h <- islands %>%
   labs(x="Heterozygosity") + 
   annotate(geom="segment",
            y=3,yend=2.2,x=arrow_position,xend=arrow_position,
-           arrow = arrow(type = "closed", length = unit(0.02, "npc"))) ; p2
+           arrow = arrow(type = "closed", length = unit(0.02, "npc"))) ; published_h
 
 png(paste0(FIGURE_DIR,"/published_genomic_H_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=5,height=5,units='in')
@@ -355,8 +358,11 @@ summary(tmp_model)
 paul4_gc_plot <- paul4_gc %>%
   ggplot(aes(x=total_length,y=mean_GC*100)) + 
   geom_smooth(method="lm",colour="black") +
-  geom_point(size=3,pch=21,colour="black",aes(fill=chr)) + 
-  scale_fill_manual(unique(paul4_gc$chr),values=colours) +
+  geom_point(size=3,pch=21,
+             #aes(fill=chr),
+             fill="cornflowerblue",
+             colour="black") + 
+  #scale_fill_manual(unique(paul4_gc$chr),values=colours) +
   scale_x_continuous(breaks=c(1e8,2e8,3e8,4e8),
                      labels=c(1,2,3,4)) +
   scale_y_continuous(limits=c(38.1,39.25),expand=c(0,0),

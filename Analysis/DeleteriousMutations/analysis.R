@@ -8,6 +8,13 @@ library(plyr)
 library(tidyr)
 library(ggnewscale)
 library(ggResidpanel)
+library(reshape)
+library(Hmisc)
+library(MASS)
+library(foreign)
+library(DescTools)
+library(ordinalCont)
+library(brms)
 options(dplyr.summarise.inform = FALSE)
 
 # Set environment
@@ -270,6 +277,13 @@ tmp_lhip <- wild %>%
 colnames(tmp_lhip)[2] <- "change" ; colnames(tmp_lhisi)[2] <- "change"
 tmp <- rbind(tmp_lhisi,tmp_lhip)
 
+# Make factor ordered
+tmp$Variant_Effect <- ordered(tmp$Variant_Effect, 
+                              levels = c("MODIFIER",
+                                         "LOW",
+                                         "MODERATE",
+                                         "HIGH")) 
+
 lhisi_model <- lm(change~Variant_Effect,data=tmp[tmp$Pop=="LHISI",])
 lhip_model <- lm(change~Variant_Effect,data=tmp[tmp$Pop=="LHIP",])
 
@@ -278,6 +292,86 @@ lhip_model <- lm(change~Variant_Effect,data=tmp[tmp$Pop=="LHIP",])
 
 summary(lhisi_model)
 summary(lhip_model)
+
+# JTTest
+JonckheereTerpstraTest(formula=change~Variant_Effect,data=tmp[tmp$Pop=="LHISI",],
+                       alternative="decreasing",nperm=500)
+JonckheereTerpstraTest(formula=change~Variant_Effect,data=tmp[tmp$Pop=="LHIP",],
+                       alternative="decreasing",nperm=500)
+
+# Ordered logistic regression
+lhisi_model <- polr(formula=Variant_Effect~change,data=tmp[tmp$Pop=="LHISI",],Hess=T)
+summary(lhisi_model)
+ctable <- coef(summary(lhisi_model))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail=F) * 2
+(ctable <- cbind(ctable, "p value" = p))
+
+lhip_model <- polr(formula=Variant_Effect~change,data=tmp[tmp$Pop=="LHIP",],Hess=T)
+summary(lhip_model)
+ctable <- coef(summary(lhip_model))
+p <- pnorm(abs(ctable[, "t value"]), lower.tail=F) * 2
+(ctable <- cbind(ctable, "p value" = p))
+
+# Get inverse logit of cutpoints, i.e. the cumulative probability of
+# being a specific variant effect class, and the beta coefficient models
+# the probability of going up by one of these for each
+
+
+# BRMS model? Why discuss significance at all
+
+lhisi_brms <- brms::brm(change~Variant_Effect,
+                           data = tmp[tmp$Pop=="LHISI",],
+                           family = gaussian(), 
+                           chains = 4,
+                           iter = 3000, warmup = 1000,cores=2,
+                        silent=2)
+summary(lhisi_brms)
+plot(lhisi_brms)
+hypothesis(lhisi_brms,"Variant_Effect.L<0",alpha=0.05)
+
+lhip_brms <- brms::brm(change~Variant_Effect,
+                        data = tmp[tmp$Pop=="LHIP",],
+                        family = gaussian(), 
+                        chains = 4,
+                        iter = 3000, warmup = 1000,cores=2,
+                       silent=2)
+summary(lhip_brms)
+plot(lhip_brms)
+hypothesis(lhip_brms,"Variant_Effect.L<0",alpha=0.05)
+
+# We'll also do thi
+tmp_lhisi <- wild %>% filter(fate_lhisi != "absent") %>% 
+  #  filter(is.na(AED) | AED > 0.25) %>%
+  dplyr::select(Variant_Effect,lhisi_change) %>% mutate(Pop="LHISI")
+tmp_lhip <- wild %>%
+  #  filter(is.na(AED) | AED > 0.25) %>%
+  dplyr::select(Variant_Effect,lhip_change) %>% mutate(Pop="LHIP")
+colnames(tmp_lhip)[2] <- "change" ; colnames(tmp_lhisi)[2] <- "change"
+tmp <- rbind(tmp_lhisi,tmp_lhip)
+
+lhisi_brms <- brms::brm(change~Variant_Effect,
+                        data = tmp[tmp$Pop=="LHISI",],
+                        family = gaussian(), 
+                        chains = 4,
+                        iter = 3000, warmup = 1000,cores=2,
+                        silent=2)
+summary(lhisi_brms)
+plot(lhisi_brms)
+hypothesis(lhisi_brms,c("Variant_EffectLOW<0",
+                        "Variant_EffectMODERATE<0",
+                        "Variant_EffectHIGH<0"),alpha=0.05)
+
+lhip_brms <- brms::brm(change~Variant_Effect,
+                       data = tmp[tmp$Pop=="LHIP",],
+                       family = gaussian(), 
+                       chains = 4,
+                       iter = 3000, warmup = 1000,cores=2,
+                       silent=2)
+summary(lhip_brms)
+plot(lhip_brms)
+hypothesis(lhip_brms,c("Variant_EffectLOW<0",
+                        "Variant_EffectMODERATE<0",
+                        "Variant_EffectHIGH<0"),alpha=0.05)
 
 # Ratio of deleterious variant presence inside/outside of high ROH regions
 # Need to standardise this by presence of ROH in the first place....
