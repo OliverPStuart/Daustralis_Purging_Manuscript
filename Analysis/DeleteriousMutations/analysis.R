@@ -284,39 +284,6 @@ tmp$Variant_Effect <- ordered(tmp$Variant_Effect,
                                          "MODERATE",
                                          "HIGH")) 
 
-lhisi_model <- lm(change~Variant_Effect,data=tmp[tmp$Pop=="LHISI",])
-lhip_model <- lm(change~Variant_Effect,data=tmp[tmp$Pop=="LHIP",])
-
-#resid_panel(lhisi_model)
-#resid_panel(lhip_model)
-
-summary(lhisi_model)
-summary(lhip_model)
-
-# JTTest
-JonckheereTerpstraTest(formula=change~Variant_Effect,data=tmp[tmp$Pop=="LHISI",],
-                       alternative="decreasing",nperm=500)
-JonckheereTerpstraTest(formula=change~Variant_Effect,data=tmp[tmp$Pop=="LHIP",],
-                       alternative="decreasing",nperm=500)
-
-# Ordered logistic regression
-lhisi_model <- polr(formula=Variant_Effect~change,data=tmp[tmp$Pop=="LHISI",],Hess=T)
-summary(lhisi_model)
-ctable <- coef(summary(lhisi_model))
-p <- pnorm(abs(ctable[, "t value"]), lower.tail=F) * 2
-(ctable <- cbind(ctable, "p value" = p))
-
-lhip_model <- polr(formula=Variant_Effect~change,data=tmp[tmp$Pop=="LHIP",],Hess=T)
-summary(lhip_model)
-ctable <- coef(summary(lhip_model))
-p <- pnorm(abs(ctable[, "t value"]), lower.tail=F) * 2
-(ctable <- cbind(ctable, "p value" = p))
-
-# Get inverse logit of cutpoints, i.e. the cumulative probability of
-# being a specific variant effect class, and the beta coefficient models
-# the probability of going up by one of these for each
-
-
 # BRMS model? Why discuss significance at all
 
 lhisi_brms <- brms::brm(change~Variant_Effect,
@@ -327,7 +294,11 @@ lhisi_brms <- brms::brm(change~Variant_Effect,
                         silent=2)
 summary(lhisi_brms)
 plot(lhisi_brms)
-hypothesis(lhisi_brms,"Variant_Effect.L<0",alpha=0.05)
+hypothesis(lhisi_brms,
+           c("Variant_Effect.L<0",
+             "Variant_Effect.Q<0",
+             "Variant_Effect.C<0"),
+           alpha=0.05)
 
 lhip_brms <- brms::brm(change~Variant_Effect,
                         data = tmp[tmp$Pop=="LHIP",],
@@ -337,7 +308,11 @@ lhip_brms <- brms::brm(change~Variant_Effect,
                        silent=2)
 summary(lhip_brms)
 plot(lhip_brms)
-hypothesis(lhip_brms,"Variant_Effect.L<0",alpha=0.05)
+hypothesis(lhip_brms,
+           c("Variant_Effect.L<0",
+             "Variant_Effect.Q<0",
+             "Variant_Effect.C<0"),
+           alpha=0.05)
 
 # We'll also do thi
 tmp_lhisi <- wild %>% filter(fate_lhisi != "absent") %>% 
