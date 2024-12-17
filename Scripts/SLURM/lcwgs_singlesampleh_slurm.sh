@@ -24,5 +24,5 @@ cd ${HOME_DIR}/Daus_WGS_Paper
 conda activate ~/.conda/envs/paul4_env
 #conda activate paul4_env
 
-snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SnakefileSingleSampleHEstimation -r --cores 48 --unlock
-snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SnakefileSingleSampleHEstimation -r --cores 48
+snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SingleSampleHEstimation.smk -r --cores 48 --unlock
+snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SingleSampleHEstimation.smk -r --cores 48

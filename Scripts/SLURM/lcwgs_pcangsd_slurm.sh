@@ -108,11 +108,11 @@ touch sites_maf_thin.*
 # Now use angsd to get a genotype likelihood file for these sites
 
 # Test line for small file
-#${ANGSD} -b all_bam_list.txt -ref ${REFERENCE} -out all_thin \
-#-uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
-#-minInd 9 -setMinDepthInd 1 -setMaxDepthInd 8 \
-#-doCounts 1 -GL 2 -doGlf 2 -doMajorMinor 4 -nThreads 8 \
-#-r CM057008.1:1-1000000
+${ANGSD} -b all_bam_list.txt -ref ${REFERENCE} -out all_thin \
+-uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+-minInd 9 -setMinDepthInd 1 -setMaxDepthInd 8 \
+-doCounts 1 -GL 2 -doGlf 2 -doMajorMinor 4 -nThreads 8 \
+-r CM057008.1:1-1000000
 
 ${ANGSD} -b all_bam_list.txt -ref ${REFERENCE} -out all_thin \
 -uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
@@ -120,23 +120,24 @@ ${ANGSD} -b all_bam_list.txt -ref ${REFERENCE} -out all_thin \
 -doCounts 1 -GL 2 -doGlf 2 -doMajorMinor 4 -nThreads 8 \
 -sites sites_thin
 
-#${ANGSD} -b all_bam_list.txt -ref ${REFERENCE} -out all_thin_maf \
-#-uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
-#-minInd 9 -setMinDepthInd 1 -setMaxDepthInd 8 \
-#-doCounts 1 -GL 2 -doGlf 2 -doMajorMinor 4 -nThreads 8 \
-#-sites sites_maf_thin
+${ANGSD} -b all_bam_list.txt -ref ${REFERENCE} -out all_thin_maf \
+-uniqueOnly 1 -remove_bads 1 -only_proper_pairs 1 -trim 0 -C 50 -baq 1 -minMapQ 30 -minQ 30 \
+-minInd 9 -setMinDepthInd 1 -setMaxDepthInd 8 \
+-doCounts 1 -GL 2 -doGlf 2 -doMajorMinor 4 -nThreads 8 \
+-sites sites_maf_thin
 
 # Now run pcangsd with different maf cutoffs and different thinning values
 
 ### Error is here... command not found
 ### Probably to do with python library links etc
+# Easier to run locally, matrix estimation is fast
 
-#${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin --inbreed_samples
-#${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_05 --inbreed_samples --maf 0.05
-#${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_10 --inbreed_samples --maf 0.10
-#${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_15 --inbreed_samples --maf 0.15
+${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin --inbreed_samples
+${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_05 --inbreed_samples --maf 0.05
+${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_10 --inbreed_samples --maf 0.10
+${PCANGSD} -b all_thin.beagle.gz -o pcangsd_all_thin_15 --inbreed_samples --maf 0.15
 
-#${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf --inbreed_samples
-#${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_05 --inbreed_samples --maf 0.05
-#${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_10 --inbreed_samples --maf 0.10
-#${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_15 --inbreed_samples --maf 0.15
+${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf --inbreed_samples
+${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_05 --inbreed_samples --maf 0.05
+${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_10 --inbreed_samples --maf 0.10
+${PCANGSD} -b all_thin_maf.beagle.gz -o pcangsd_all_thin_maf_15 --inbreed_samples --maf 0.15

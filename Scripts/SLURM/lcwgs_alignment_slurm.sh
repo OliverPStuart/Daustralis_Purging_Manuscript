@@ -22,5 +22,5 @@ cd ${HOME_DIR}
 
 conda activate $HOME_DIR/.conda/envs/aln_env
 
-snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SnakefileAlignmentWGS --cores 46 --unlock
-snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/SnakefileAlignmentWGS --cores 46
+snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/AlignmentWGS.smk --cores 46 --unlock
+snakemake -s $HOME_DIR/Daus_WGS_Paper/Scripts/Snakefiles/AlignmentWGS.smk --cores 46

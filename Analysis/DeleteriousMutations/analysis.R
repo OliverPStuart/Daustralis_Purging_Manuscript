@@ -15,6 +15,7 @@ library(foreign)
 library(DescTools)
 library(ordinalCont)
 library(brms)
+library(ggridges)
 options(dplyr.summarise.inform = FALSE)
 
 # Set environment
@@ -503,3 +504,82 @@ png(paste0(FIGURE_DIR,"/muts_in_roh_",format(Sys.time(),"%Y%m%d"),".png"),
     width=6,height=3,units='in',res=300)
 plot(p)
 dev.off()
+
+# Rxy
+
+# Something like this? 
+# Calculated like this gives us relative depletion in LHIP/LHISI compared to wild
+# Rather, 
+
+effects %>% 
+#  filter(fate_lhisi != "absent") %>% 
+  mutate(RXY=MAF_lhisi/(1-MAF_wild),RYX=MAF_wild/(1-MAF_lhisi)) %>%
+  filter(!is.na(RXY),!is.na(RYX),RXY!=Inf,RYX!=Inf) %>% group_by(Variant_Effect) %>%
+  dplyr::summarise(RYX=sum(RYX)/sum(RXY))
+
+effects %>% 
+  #filter(fate_lhip != "absent") %>% 
+  mutate(RXY=MAF_lhip/(1-MAF_wild),RYX=MAF_wild/(1-MAF_lhip)) %>%
+  filter(!is.na(RXY),!is.na(RYX),RXY!=Inf,RYX!=Inf) %>% group_by(Variant_Effect) %>%
+  dplyr::summarise(RYX=sum(RYX)/sum(RXY))
+
+tmp <- effects %>% 
+  filter(fate_lhisi != "absent") %>% 
+  mutate(RXY=MAF_lhisi/(1-MAF_wild),RYX=MAF_wild/(1-MAF_lhisi)) %>%
+  filter(!is.na(RXY),!is.na(RYX),RXY!=Inf,RYX!=Inf,RXY!=-Inf,RYX!=-Inf)
+
+tmp <- effects %>% 
+  filter(fate_lhip != "absent") %>% 
+  mutate(RXY=MAF_lhip/(1-MAF_wild),RYX=MAF_wild/(1-MAF_lhip)) %>%
+  filter(!is.na(RXY),!is.na(RYX),RXY!=Inf,RYX!=Inf,RXY!=-Inf,RYX!=-Inf)
+
+N=100
+
+for(i in 1:N){
+  
+  print(i)
+  d <- tmp %>%
+    dplyr::group_by(Variant_Effect) %>%
+    dplyr::sample_n(size=n(),replace=T) %>%
+    dplyr::summarise(RYX=sum(RYX)/sum(RXY),
+                     rep=i)
+  
+  assign(paste0("lhisi_rxy_",i),
+         d)
+
+  
+  if(i==N){
+    
+    # Collate results of bootstrap
+    table_names <- ls(pattern = "^lhisi_rxy")
+    table_list <- mget(table_names)
+    result_table <- do.call(rbind, table_list)
+    rm(list=ls(pattern = "^lhisi_rxy"),table_names)
+    
+    # Calculate SE
+    result_table_collated <- result_table %>% group_by(Variant_Effect) %>%
+      dplyr::summarise(mean=mean(RYX),
+                       se=sd(RYX),
+                       lower95=quantile(RYX,0.025),
+                       upper95=quantile(RYX,0.975))
+    
+  }
+}
+
+ggplot(result_table_collated) + 
+  geom_errorbar(mapping=aes(y=mean,x=Variant_Effect,ymin=mean-se,ymax=mean+se),
+                width=0) + 
+  geom_point(mapping=aes(y=mean,x=Variant_Effect),pch=21,size=3,fill="grey88") + 
+  theme_bw()
+
+ggplot(result_table_collated) + 
+  geom_errorbar(mapping=aes(y=mean,x=Variant_Effect,ymin=lower95,ymax=upper95),
+                width=0) + 
+  geom_point(mapping=aes(y=mean,x=Variant_Effect),pch=21,size=3,fill="grey88") + 
+  theme_bw()
+
+ggplot(result_table) +
+  ggridges::geom_density_ridges(aes(y=Variant_Effect,x=RYX))
+
+# Huge 95 % intervals
+# So I think I'm calculating this wrong

@@ -522,7 +522,7 @@ ROHs_figure_1 <- tmp %>%
   theme_bw() + 
   theme(axis.ticks=element_blank(),
         panel.grid=element_blank(),
-        legend.position=c(0.85,0.86),
+        legend.position.inside=c(0.85,0.86),
         legend.background = element_rect(colour="black"),
         legend.title = element_blank()) + 
   scale_x_discrete(labels=c("> 100 kb","> 1 Mb","> 2 Mb","> 5 Mb")) + 
@@ -531,7 +531,7 @@ ROHs_figure_1 <- tmp %>%
 
 png(paste0(FIGURE_DIR,"/roh_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=5.5,height=5.5,units='in')
-plot(ROHs_figure)
+plot(ROHs_figure_1)
 dev.off()
 
 # Also save this as a table
@@ -741,15 +741,31 @@ colnames(data) <- c("YearsAgo","Ne","Rep")
 data$YearsAgo <- data$YearsAgo + 10^4
 
 ggplot() + 
+  geom_rect(aes(xmin=19000,xmax=23000,ymin=1,ymax=2000000),fill="grey95",colour="grey95") +
   geom_step(data=data[data$Rep != "main",],
             aes(x=YearsAgo,y=Ne,group=Rep),colour="grey") + 
   geom_step(data=data[data$Rep == "main",],
             aes(x=YearsAgo,y=Ne),colour="cornflowerblue") + 
-  scale_y_continuous(trans="log10",limits=c(10,25000)) + 
-  scale_x_continuous(limits=c(9000,11000)) + 
+  scale_y_continuous(trans="log10") + 
+  scale_x_continuous(trans="log10") + 
   theme_bw() + 
   theme(axis.ticks=element_blank(),
-        panel.grid.minor=element_blank())
+        panel.grid.minor=element_blank()) + 
+  coord_cartesian(ylim=c(10,25000))
+
+ggplot() + 
+  geom_rect(aes(xmin=19000,xmax=23000,ymin=1,ymax=2000000),fill="grey95",colour="grey95") +
+  geom_step(data=data[data$Rep != "main",],
+            aes(x=YearsAgo,y=Ne,group=Rep),colour="grey") + 
+  geom_step(data=data[data$Rep == "main",],
+            aes(x=YearsAgo,y=Ne),colour="cornflowerblue") + 
+  scale_y_continuous(trans="log10") + 
+  scale_x_continuous(trans="log10") + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        panel.grid.minor=element_blank()) + 
+  coord_cartesian(ylim=c(10,25000),xlim=c(9999,11001))
+
 
 # Weird artefact to analyse, but we'll get there...
 # What could cause this...
