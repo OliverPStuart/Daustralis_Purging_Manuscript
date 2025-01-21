@@ -61,8 +61,11 @@ grand_mean <- depths %>%
   summarise(Mean=mean(Depth)) %>%
   pull(Mean)
 
-p <- depths %>% 
+autosomes <- depths %>% 
   filter(Type == "Autosome") %>%
+  mutate(Scaffold=as.factor(Scaffold))
+
+p <- autosomes %>%
   group_by(Scaffold) %>%
   summarise(Mean=mean(Depth),
             #SD=sd(Depth),
@@ -81,7 +84,9 @@ p <- depths %>%
   theme_bw() + 
   theme(axis.ticks=element_blank(),
         panel.grid=element_blank()) + 
-  scale_x_continuous(breaks=seq(5,75,5))
+  scale_x_continuous(breaks=seq(5,75,5)) + 
+  scale_y_discrete(limits=rev(levels(autosomes$Scaffold)),
+                   labels=16:1,name="Chromosome"); p
 
 png(paste0(FIGURE_DIR,"/PAUL4_Depth_Autosomes_95&99Quaantiles_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=7,height=6,units='in')
@@ -208,13 +213,13 @@ genome_wide_h <- H %>%
   theme_bw() +
   theme(axis.ticks=element_blank(),panel.grid=element_blank(),
         legend.position="none",
-        axis.text.x=element_text(angle=35,hjust=1),
+        axis.text.x=element_text(hjust=1),
         axis.title.x=element_blank()) +
   geom_rect(inherit.aes=NULL,data=rect,aes(xmin=xmin,xmax=xmax,ymin=ymin,ymax=ymax),
             colour="gray95",fill="gray95") +
   geom_line() +
   geom_area() +
-  scale_x_continuous(expand=c(0,0),lim=c(1,nrow(H)),breaks=Locations$Locations,labels=Locations$Chromosome) +
+  scale_x_continuous(expand=c(0,0),lim=c(1,nrow(H)),breaks=Locations$Locations,labels=1:16) +
   scale_y_continuous(breaks=y_labels,
                      labels=c(expression(0),
                               expression(2%*%10^-3),

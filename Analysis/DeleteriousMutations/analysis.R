@@ -1,11 +1,15 @@
 ### Script to analyse and plot H from lcWGS
 
+setwd("/Volumes/Alter/Daus_WGS_Paper/Analysis/DeleteriousMutations/")
+
+############################################
+###           Environment setup          ###
+############################################
+
 # Libraries
 
 library(ggplot2)
 library(dplyr)
-library(plyr)
-library(tidyr)
 library(ggnewscale)
 library(ggResidpanel)
 library(reshape)
@@ -13,25 +17,28 @@ library(Hmisc)
 library(MASS)
 library(foreign)
 library(DescTools)
-library(ordinalCont)
 library(brms)
 library(ggridges)
-options(dplyr.summarise.inform = FALSE)
 
 # Set environment
 
 source("../../config.R")
 setwd(paste0(WORKING_DIR,"/DeleteriousMutations"))
 
-# My favourite function
+# Functions
 
 `%ni%` <- Negate(`%in%`)
+fold <- function(x) {
+  ifelse(x > 0.5, 1 - x, x)
+}
 
 # Get colours
 
 source(paste0(DATA_DIR,"/colours.R"))
 
-# Read data in, rename for ease of use
+############################################
+###            Data preparation          ###
+############################################
 
 lhisi <- read.table("../AlleleFrequencies/lhisi.mafs.gz",
                     header=T,stringsAsFactors=F,sep="\t")[,c(1,2,6,7)]
@@ -79,7 +86,7 @@ scores <- read.table("gene_scores.txt",header=T,stringsAsFactors = F)
 intergenic <- effects %>% filter(is.na(Gene) == T)
 genic <- effects %>% filter(is.na(Gene) == F)
 genic <- merge(genic,scores)
-effects <- rbind.fill(genic,intergenic)
+effects <- plyr::rbind.fill(genic,intergenic)
 rm(genic,intergenic)
 
 # For each population, score every site by that population's frequency for the allele
@@ -150,13 +157,15 @@ effects$Variant_Effect <- factor(effects$Variant_Effect,
                                  levels=c("MODIFIER","LOW","MODERATE","HIGH"),
                                  labels=c("MODIFIER","LOW","MODERATE","HIGH"))
 
-# Bring in 2-dimensional colour scheme and make legend figures
+############################################
+###             Colour scheme            ###
+############################################
 
 new_colours <- read.delim(paste0(REF_DIR,"/two_pop_2d_colour_scale.txt"),
                           header=F,stringsAsFactors = F)
 colnames(new_colours) <- c("Effect","Captive","Hybrid","Wild")
 
-new_colours_n <- new_colours %>% gather(-Effect,key="Population",value="Colour")
+new_colours_n <- new_colours %>% tidyr::gather(-Effect,key="Population",value="Colour")
 
 legend_plot <- new_colours_n %>%
   ggplot() + 
@@ -189,315 +198,600 @@ png(paste0(FIGURE_DIR,"/frequency_change_legend_",format(Sys.time(),"%Y%m%d"),".
 plot(legend_plot)
 dev.off()
 
-# Get wild alleles
+############################################
+###           Raw AF difference         ###
+############################################
 
-wild <- effects %>% filter(fate_wild != "absent" & !is.na(fate_wild))
+#########
+######### NB: No longer used, see Rxy code below
+#########
 
-# Calculate difference in frequency
+# # Get wild alleles
+# 
+# wild <- effects %>% filter(fate_wild != "absent" & !is.na(fate_wild))
+# 
+# # Calculate difference in frequency
+# 
+# wild$lhisi_change <- wild$MAF_lhisi - wild$MAF_wild
+# wild$lhip_change <- wild$MAF_lhip - wild$MAF_wild
+# wild <- wild %>% tidyr::drop_na(lhisi_change,lhip_change)
+# 
+# # Plotting mean+sd difference per variant effect class
+# # Excluding those variants in each population which are absent
+# 
+# tmp_lhisi <- wild %>% group_by(Variant_Effect) %>% 
+# #  filter(is.na(AED) | AED > 0.25) %>%
+#   filter(fate_lhisi != "absent") %>%
+#   dplyr::summarise(mean_lhisi=mean(lhisi_change),
+#                    sd_lhisi=sd(lhisi_change)) %>%
+#   tidyr::gather(key, value, -Variant_Effect) %>%
+#   tidyr::extract(key, c("stat", "pop"), "(.+)_(.+)") %>%
+#   tidyr::spread(stat, value)
+# tmp_lhip <- wild %>% group_by(Variant_Effect) %>% 
+#   filter(fate_lhip != "absent") %>%
+# #  filter(is.na(AED) | AED > 0.25) %>%
+#   dplyr::summarise(mean_lhip=mean(lhip_change),
+#                    sd_lhip=sd(lhip_change)) %>%
+#   tidyr::gather(key, value, -Variant_Effect) %>%
+#   tidyr::extract(key, c("stat", "pop"), "(.+)_(.+)") %>%
+#   tidyr::spread(stat, value)
+# 
+# change_data <- rbind(tmp_lhisi,tmp_lhip)
+# 
+# p <- change_data %>% 
+#   ggplot() + 
+#   scale_x_continuous(limits=c(-0.7,0.1)) + 
+#   geom_errorbar(aes(fill=factor(Variant_Effect,levels=c("HIGH","MODERATE","LOW","MODIFIER")),
+#                     x=mean,y=pop,xmin=mean-sd,xmax=mean+sd),
+#                 width=0,size=0.7,position=position_dodge(width=0.6),
+#                 filter(change_data,pop=="lhisi")) + 
+#   geom_point(aes(fill=factor(Variant_Effect,levels=c("HIGH","MODERATE","LOW","MODIFIER")),
+#                  x=mean,y=pop),
+#              size=4.5,pch=21,position=position_dodge(width=0.6),
+#              filter(change_data,pop=="lhisi")) + 
+#   scale_fill_manual(values=rev(new_colours[,3])) +
+#   new_scale_fill() +
+#   geom_errorbar(aes(fill=factor(Variant_Effect,levels=c("HIGH","MODERATE","LOW","MODIFIER")),
+#                     x=mean,y=pop,xmin=mean-sd,xmax=mean+sd),
+#                 width=0,size=0.7,position=position_dodge(width=0.6),
+#                 filter(change_data,pop=="lhip")) + 
+#   geom_point(aes(fill=factor(Variant_Effect,levels=c("HIGH","MODERATE","LOW","MODIFIER")),
+#                  x=mean,y=pop),
+#              size=4.5,pch=21,position=position_dodge(width=0.6),
+#              filter(change_data,pop=="lhip")) + 
+#   scale_fill_manual(values=rev(new_colours[,2])) +
+#   geom_vline(xintercept=0,linetype="dashed",colour="black",size=1) + 
+#   theme_bw() + 
+#   theme(axis.ticks=element_blank(),
+#         panel.background=element_blank(),
+#         panel.grid.minor=element_blank(),
+#         strip.background = element_blank(),
+#         strip.text = element_blank(),
+#         axis.title.y=element_blank(),
+#         axis.text.x=element_text(size=10),
+#         axis.text.y=element_blank(),
+#         panel.grid=element_blank(),
+#         legend.position="none") + 
+#   labs(x="Frequency difference\nin captivity") +
+#   scale_y_discrete(labels=c("LHIP","LHISI")) ; p
+# 
+# # Plot
+# 
+# png(paste0(FIGURE_DIR,"/frequency_change_",format(Sys.time(),"%Y%m%d"),".png"),
+#     width=6,height=3,units='in',res=300)
+# plot(p)
+# dev.off()
+# 
+# # Now run the tests
+# # We exclude WildPresent-CaptiveAbsent alleles here
+# # However, we include WildPresent-HybridAbsent
+# 
+# tmp_lhisi <- wild %>% 
+#   filter(fate_lhisi != "absent") %>% 
+# #  filter(is.na(AED) | AED > 0.25) %>%
+#   dplyr::select(Variant_Effect,lhisi_change) %>% mutate(Pop="LHISI")
+# tmp_lhip <- wild %>%
+# #  filter(is.na(AED) | AED > 0.25) %>%
+#   filter(fate_lhip != "absent") %>% 
+#   dplyr::select(Variant_Effect,lhip_change) %>% mutate(Pop="LHIP")
+# colnames(tmp_lhip)[2] <- "change" ; colnames(tmp_lhisi)[2] <- "change"
+# tmp <- rbind(tmp_lhisi,tmp_lhip)
+# 
+# # Make factor ordered
+# tmp$Variant_Effect <- ordered(tmp$Variant_Effect, 
+#                               levels = c("MODIFIER",
+#                                          "LOW",
+#                                          "MODERATE",
+#                                          "HIGH")) 
+# 
+# # BRMS model? Why discuss significance at all
+# 
+# lhisi_brms <- brms::brm(change~Variant_Effect,
+#                            data = tmp[tmp$Pop=="LHISI",],
+#                            family = gaussian(), 
+#                            chains = 4,
+#                            iter = 3000, warmup = 1000,cores=4,
+#                         silent=2)
+# summary(lhisi_brms)
+# plot(lhisi_brms)
+# hypothesis(lhisi_brms,
+#            c("Variant_Effect.L<0",
+#              "Variant_Effect.Q<0",
+#              "Variant_Effect.C<0"),
+#            alpha=0.05)
+# 
+# lhip_brms <- brms::brm(change~Variant_Effect,
+#                         data = tmp[tmp$Pop=="LHIP",],
+#                         family = gaussian(), 
+#                         chains = 4,
+#                         iter = 3000, warmup = 1000,cores=4,
+#                        silent=2)
+# summary(lhip_brms)
+# plot(lhip_brms)
+# hypothesis(lhip_brms,
+#            c("Variant_Effect.L<0",
+#              "Variant_Effect.Q<0",
+#              "Variant_Effect.C<0"),
+#            alpha=0.05)
+# 
+# # We'll also do thi
+# tmp_lhisi <- wild %>% 
+#   filter(fate_lhisi != "absent") %>% 
+#   #  filter(is.na(AED) | AED > 0.25) %>%
+#   dplyr::select(Variant_Effect,lhisi_change) %>% mutate(Pop="LHISI")
+# tmp_lhip <- wild %>%
+#   filter(fate_lhip != "absent") %>% 
+#   #  filter(is.na(AED) | AED > 0.25) %>%
+#   dplyr::select(Variant_Effect,lhip_change) %>% mutate(Pop="LHIP")
+# colnames(tmp_lhip)[2] <- "change" ; colnames(tmp_lhisi)[2] <- "change"
+# tmp <- rbind(tmp_lhisi,tmp_lhip)
+# 
+# lhisi_brms <- brms::brm(change~Variant_Effect,
+#                         data = tmp[tmp$Pop=="LHISI",],
+#                         family = gaussian(), 
+#                         chains = 4,
+#                         iter = 3000, warmup = 1000,cores=4,
+#                         silent=2)
+# summary(lhisi_brms)
+# plot(lhisi_brms)
+# hypothesis(lhisi_brms,c("Variant_EffectLOW<0",
+#                         "Variant_EffectMODERATE<0",
+#                         "Variant_EffectHIGH<0"),alpha=0.05)
+# 
+# lhip_brms <- brms::brm(change~Variant_Effect,
+#                        data = tmp[tmp$Pop=="LHIP",],
+#                        family = gaussian(), 
+#                        chains = 4,
+#                        iter = 3000, warmup = 1000,cores=4,
+#                        silent=2)
+# summary(lhip_brms)
+# plot(lhip_brms)
+# hypothesis(lhip_brms,c("Variant_EffectLOW<0",
+#                         "Variant_EffectMODERATE<0",
+#                         "Variant_EffectHIGH<0"),alpha=0.05)
 
-wild$lhisi_change <- wild$MAF_lhisi - wild$MAF_wild
-wild$lhip_change <- wild$MAF_lhip - wild$MAF_wild
-wild <- wild %>% drop_na(lhisi_change,lhip_change)
+############################################
+###                 Rxy                  ###
+############################################
 
-# Plotting mean+sd difference per variant effect class
-# Excluding those variants in each population which are absent
+# We do block jackknifing following Do et al. (2015).
 
-tmp_lhisi <- wild %>% group_by(Variant_Effect) %>% 
-#  filter(is.na(AED) | AED > 0.25) %>%
-  filter(fate_lhisi != "absent") %>%
-  dplyr::summarise(mean_lhisi=mean(lhisi_change),
-                   sd_lhisi=sd(lhisi_change)) %>%
-  gather(key, value, -Variant_Effect) %>%
-  tidyr::extract(key, c("stat", "pop"), "(.+)_(.+)") %>%
-  spread(stat, value)
-tmp_lhip <- wild %>% group_by(Variant_Effect) %>% 
-  #  filter(fate_lhip != "absent") %>%
-#  filter(is.na(AED) | AED > 0.25) %>%
-  dplyr::summarise(mean_lhip=mean(lhip_change),
-                   sd_lhip=sd(lhip_change)) %>%
-  gather(key, value, -Variant_Effect) %>%
-  tidyr::extract(key, c("stat", "pop"), "(.+)_(.+)") %>%
-  spread(stat, value)
+# Testing block size shows that block size makes no difference.
 
-change_data <- rbind(tmp_lhisi,tmp_lhip)
+# For this, we care about alleles which are present in the focal population. If
+# an allele is absent in a population, this could be because selection removed
+# it after it was introduced or because it was never introduced into the captive
+# breeding program in the first place. This is conservative, because we may
+# be removing some strong signals of selection (true positives) for the sake of
+# reducing the false positive rate.
 
-p <- change_data %>% 
-  ggplot() + 
-  scale_x_continuous(limits=c(-0.7,0.1)) + 
-  geom_errorbar(aes(fill=factor(Variant_Effect,levels=c("HIGH","MODERATE","LOW","MODIFIER")),
-                    x=mean,y=pop,xmin=mean-sd,xmax=mean+sd),
-                width=0,size=0.7,position=position_dodge(width=0.6),
-                filter(change_data,pop=="lhisi")) + 
-  geom_point(aes(fill=factor(Variant_Effect,levels=c("HIGH","MODERATE","LOW","MODIFIER")),
-                 x=mean,y=pop),
-             size=4.5,pch=21,position=position_dodge(width=0.6),
-             filter(change_data,pop=="lhisi")) + 
-  scale_fill_manual(values=rev(new_colours[,3])) +
-  new_scale_fill() +
-  geom_errorbar(aes(fill=factor(Variant_Effect,levels=c("HIGH","MODERATE","LOW","MODIFIER")),
-                    x=mean,y=pop,xmin=mean-sd,xmax=mean+sd),
-                width=0,size=0.7,position=position_dodge(width=0.6),
-                filter(change_data,pop=="lhip")) + 
-  geom_point(aes(fill=factor(Variant_Effect,levels=c("HIGH","MODERATE","LOW","MODIFIER")),
-                 x=mean,y=pop),
-             size=4.5,pch=21,position=position_dodge(width=0.6),
-             filter(change_data,pop=="lhip")) + 
-  scale_fill_manual(values=rev(new_colours[,2])) +
-  geom_vline(xintercept=0,linetype="dashed",colour="black",size=1) + 
-  theme_bw() + 
-  theme(axis.ticks=element_blank(),
-        panel.background=element_blank(),
-        panel.grid.minor=element_blank(),
-        strip.background = element_blank(),
-        strip.text = element_blank(),
-        axis.title.y=element_blank(),
-        axis.text.x=element_text(size=10),
-        axis.text.y=element_blank(),
-        panel.grid=element_blank(),
-        legend.position="none") + 
-  labs(x="Frequency difference\nin captivity") +
-  scale_y_discrete(labels=c("LHIP","LHISI")) ; p
-
-# Plot
-
-png(paste0(FIGURE_DIR,"/frequency_change_",format(Sys.time(),"%Y%m%d"),".png"),
-    width=6,height=3,units='in',res=300)
-plot(p)
-dev.off()
-
-# Now run the tests
-# We exclude WildPresent-CaptiveAbsent alleles here
-# However, we include WildPresent-HybridAbsent
-
-tmp_lhisi <- wild %>% filter(fate_lhisi != "absent") %>% 
-#  filter(is.na(AED) | AED > 0.25) %>%
-  dplyr::select(Variant_Effect,lhisi_change) %>% mutate(Pop="LHISI")
-tmp_lhip <- wild %>%
-#  filter(is.na(AED) | AED > 0.25) %>%
-  dplyr::select(Variant_Effect,lhip_change) %>% mutate(Pop="LHIP")
-colnames(tmp_lhip)[2] <- "change" ; colnames(tmp_lhisi)[2] <- "change"
-tmp <- rbind(tmp_lhisi,tmp_lhip)
-
-# Make factor ordered
-tmp$Variant_Effect <- ordered(tmp$Variant_Effect, 
-                              levels = c("MODIFIER",
-                                         "LOW",
-                                         "MODERATE",
-                                         "HIGH")) 
-
-# BRMS model? Why discuss significance at all
-
-lhisi_brms <- brms::brm(change~Variant_Effect,
-                           data = tmp[tmp$Pop=="LHISI",],
-                           family = gaussian(), 
-                           chains = 4,
-                           iter = 3000, warmup = 1000,cores=2,
-                        silent=2)
-summary(lhisi_brms)
-plot(lhisi_brms)
-hypothesis(lhisi_brms,
-           c("Variant_Effect.L<0",
-             "Variant_Effect.Q<0",
-             "Variant_Effect.C<0"),
-           alpha=0.05)
-
-lhip_brms <- brms::brm(change~Variant_Effect,
-                        data = tmp[tmp$Pop=="LHIP",],
-                        family = gaussian(), 
-                        chains = 4,
-                        iter = 3000, warmup = 1000,cores=2,
-                       silent=2)
-summary(lhip_brms)
-plot(lhip_brms)
-hypothesis(lhip_brms,
-           c("Variant_Effect.L<0",
-             "Variant_Effect.Q<0",
-             "Variant_Effect.C<0"),
-           alpha=0.05)
-
-# We'll also do thi
-tmp_lhisi <- wild %>% filter(fate_lhisi != "absent") %>% 
-  #  filter(is.na(AED) | AED > 0.25) %>%
-  dplyr::select(Variant_Effect,lhisi_change) %>% mutate(Pop="LHISI")
-tmp_lhip <- wild %>%
-  #  filter(is.na(AED) | AED > 0.25) %>%
-  dplyr::select(Variant_Effect,lhip_change) %>% mutate(Pop="LHIP")
-colnames(tmp_lhip)[2] <- "change" ; colnames(tmp_lhisi)[2] <- "change"
-tmp <- rbind(tmp_lhisi,tmp_lhip)
-
-lhisi_brms <- brms::brm(change~Variant_Effect,
-                        data = tmp[tmp$Pop=="LHISI",],
-                        family = gaussian(), 
-                        chains = 4,
-                        iter = 3000, warmup = 1000,cores=2,
-                        silent=2)
-summary(lhisi_brms)
-plot(lhisi_brms)
-hypothesis(lhisi_brms,c("Variant_EffectLOW<0",
-                        "Variant_EffectMODERATE<0",
-                        "Variant_EffectHIGH<0"),alpha=0.05)
-
-lhip_brms <- brms::brm(change~Variant_Effect,
-                       data = tmp[tmp$Pop=="LHIP",],
-                       family = gaussian(), 
-                       chains = 4,
-                       iter = 3000, warmup = 1000,cores=2,
-                       silent=2)
-summary(lhip_brms)
-plot(lhip_brms)
-hypothesis(lhip_brms,c("Variant_EffectLOW<0",
-                        "Variant_EffectMODERATE<0",
-                        "Variant_EffectHIGH<0"),alpha=0.05)
-
-# Ratio of deleterious variant presence inside/outside of high ROH regions
-# Need to standardise this by presence of ROH in the first place....
-# Would that just alter the difference between populations and not the populations themselves?
-
-# Getting some sampling error intervals for these with bootstrapping
-
-lhisi_base <- effects %>% filter(
-  fate_lhisi == "segregating",
-  #Variant_Effect != "MODIFIER"
-) %>%
-#  filter(is.na(AED) | AED > 0.25) %>%
-  mutate(ROH_50 = ifelse(Coverage_lhisi > 0.5,"Upper","Lower"))
-
-lhip_base <- effects %>% filter(
-  fate_lhip == "segregating"
-) %>%
-#  filter(is.na(AED) | AED > 0.25) %>%
-  mutate(ROH_50 = ifelse(Coverage_lhip > 0.5,"Upper","Lower"))
-
-# Now bootstrap
-
-# Number of bootstraps
-boot=100
-# Get variant vector
-types <- c("MODIFIER","LOW","MODERATE","HIGH")
+# In order to compare differences in RXY, we use the same blocks for all variant
+# types, i.e. we define blocks based on all variants, then resample the whole
+# dataset and recalculate RXY. This allows us to test if the difference in RXY
+# is greater than 0 between groups using a paired t-test.
 
 # LHISI
-vec <- c()
-for(i in 1:boot){
+
+tmp <- effects %>% 
+  filter(fate_lhisi != "absent") %>% 
+  mutate(LXY=MAF_lhisi*(1-MAF_wild),LYX=MAF_wild*(1-MAF_lhisi)) %>%
+  filter(!is.na(LXY),!is.na(LYX),LXY!=Inf,LYX!=Inf,LXY!=-Inf,LYX!=-Inf) %>%
+  dplyr::select(Scaffold,Position,LXY,LYX,Variant_Effect)
+
+# Order the data.frame by Scaffold and Position
+tmp <- tmp[order(tmp$Scaffold, tmp$Position), ]
+
+# Initialise block column
+tmp$Block <- NA
+
+# Get scaffolds
+scafs <- unique(tmp$Scaffold)
+
+# Total number of blocks desired
+# This is what gives us exactly 100 blocks of roughly equal size
+total_blocks <- 94
+
+# Total number of entries
+total_entries <- nrow(tmp)
+
+# Calculate the rough number of entries per block
+rough_block_size <- ceiling(total_entries / total_blocks)
+
+# Loop over scaffolds to define blocks algorithmically
+for(i in 1:length(scafs)){
   
-  #if(i %% 100 == 0){
-    print(i)
-  #}
+  # Get entries
+  entries <- tmp[tmp$Scaffold==scafs[i],]
   
-  val <- lhisi_base[sample(x=1:nrow(lhisi_base),size=nrow(lhisi_base),replace=T),] %>%
-    group_by(ROH_50,Variant_Effect) %>%
-    dplyr::summarise(tabulate=n()) %>% 
-    spread(key="ROH_50",value="tabulate") %>% 
-    mutate(ratio = Lower / (Lower+Upper)) %>%
-    pull(ratio)
+  # How many blocks roughly in scaffold?
+  blocks_in <- ceiling(nrow(entries)/rough_block_size)
   
-  vec <- c(vec,val)
+  # Make a vector of block assignments
+  blocks_assign <- sort(rep(1:blocks_in, length.out=nrow(entries)))
   
-  if(i == boot){
-    bootstrap_lhisi <- data.frame(ratio=vec,
-                                  Variant_Effect=rep(types,boot)) %>%
-      group_by(Variant_Effect) %>%
-      dplyr::summarise(sd=sd(ratio),
-                       mean=mean(ratio),
-                       median=median(ratio),
-                       upper_conf_95=quantile(ratio, probs = c(0.025,0.975))[2],
-                       lower_conf_95=quantile(ratio, probs = c(0.025,0.975))[1],
-                       Pop="LHISI")
+  # Add block assignments to data.frame
+  # If it's not the first scaffold, add previous values to get correct block ID
+  if(i == 1){
     
-    bootstrap_lhisi$Variant_Effect <- factor(bootstrap_lhisi$Variant_Effect,
-                                             labels=types,
-                                             levels=types)
+    tmp$Block[tmp$Scaffold==scafs[i]] <- blocks_assign
     
-    ratio <- lhisi_base %>%
-      group_by(Variant_Effect,ROH_50) %>%
-      dplyr::summarise(tabulate=n()) %>% 
-      spread(key="ROH_50",value="tabulate") %>% 
-      mutate(ratio = Lower / (Lower+Upper))
+  } else {
     
-    bootstrap_lhisi <- merge(ratio,bootstrap_lhisi)
+    blocks_assign <- blocks_assign + max(tmp$Block[tmp$Scaffold==scafs[i-1]])
+    tmp$Block[tmp$Scaffold==scafs[i]] <- blocks_assign
     
   }
+}
+
+n_blocks <- max(tmp$Block)
+
+# Jackknife, blocks
+for(i in 1:n_blocks){
+  
+  # Remove block, calculate RXY, assign to temp data.frame
+  assign(paste0("jack_rxy_",i),
+         tmp %>% filter(Block != i) %>% 
+           group_by(Variant_Effect) %>%
+           dplyr::summarise(RXY=sum(LXY)/sum(LYX),Jack=i))
   
 }
+
+# Collate results 
+table_names <- ls(pattern = "^jack_rxy_")
+table_list <- mget(table_names)
+rxy_lhisi <- do.call(rbind, table_list) %>% mutate(Pop="LHISI")
+rm(list=ls(pattern = "^jack_rxy_"))
 
 # LHIP
-vec <- c()
-for(i in 1:boot){
+
+tmp <- effects %>% 
+  filter(fate_lhip != "absent") %>% 
+  mutate(LXY=MAF_lhip*(1-MAF_wild),LYX=MAF_wild*(1-MAF_lhip)) %>%
+  filter(!is.na(LXY),!is.na(LYX),LXY!=Inf,LYX!=Inf,LXY!=-Inf,LYX!=-Inf) %>%
+  dplyr::select(Scaffold,Position,LXY,LYX,Variant_Effect)
+
+# Order the data.frame by Scaffold and Position
+tmp <- tmp[order(tmp$Scaffold, tmp$Position), ]
+
+# Initialise block column
+tmp$Block <- NA
+
+# Get scaffolds
+scafs <- unique(tmp$Scaffold)
+
+# Total number of blocks desired
+# Can't get exactly 100 equal sized blocks for LHIP, go with 102
+total_blocks <- 93
+
+# Total number of entries
+total_entries <- nrow(tmp)
+
+# Calculate the rough number of entries per block
+rough_block_size <- ceiling(total_entries / total_blocks)
+
+# Loop over scaffolds to define blocks algorithmically
+for(i in 1:length(scafs)){
   
-  #if(i %% 100 == 0){
-    print(i)
-  #}
+  # Get entries
+  entries <- tmp[tmp$Scaffold==scafs[i],]
   
-  val <- lhip_base[sample(x=1:nrow(lhip_base),size=nrow(lhip_base),replace=T),] %>%
-    group_by(ROH_50,Variant_Effect) %>%
-    dplyr::summarise(tabulate=n()) %>% 
-    spread(key="ROH_50",value="tabulate") %>% 
-    mutate(ratio = Lower / (Lower+Upper)) %>%
-    pull(ratio)
+  # How many blocks roughly in scaffold?
+  blocks_in <- ceiling(nrow(entries)/rough_block_size)
   
-  vec <- c(vec,val)
+  # Make a vector of block assignments
+  blocks_assign <- sort(rep(1:blocks_in, length.out=nrow(entries)))
   
-  if(i == boot){
-    bootstrap_lhip <- data.frame(ratio=vec,
-                                 Variant_Effect=rep(types,boot)) %>%
-      group_by(Variant_Effect) %>%
-      dplyr::summarise(sd=sd(ratio),
-                       mean=mean(ratio),
-                       median=median(ratio),
-                       upper_conf_95=quantile(ratio, probs = c(0.025,0.975))[2],
-                       lower_conf_95=quantile(ratio, probs = c(0.025,0.975))[1],
-                       Pop="LHIP")
-    bootstrap_lhip$Variant_Effect <- factor(bootstrap_lhip$Variant_Effect,
-                                            labels=types,
-                                            levels=types)
+  # Add block assignments to data.frame
+  # If it's not the first scaffold, add previous values to get correct block ID
+  if(i == 1){
     
-    ratio <- lhip_base %>%
-      group_by(Variant_Effect,ROH_50) %>%
-      dplyr::summarise(tabulate=n()) %>% 
-      spread(key="ROH_50",value="tabulate") %>% 
-      mutate(ratio = Lower / (Lower+Upper))
+    tmp$Block[tmp$Scaffold==scafs[i]] <- blocks_assign
     
-    bootstrap_lhip <- merge(ratio,bootstrap_lhip)
+  } else {
+    
+    blocks_assign <- blocks_assign + max(tmp$Block[tmp$Scaffold==scafs[i-1]])
+    tmp$Block[tmp$Scaffold==scafs[i]] <- blocks_assign
     
   }
+}
+
+n_blocks <- max(tmp$Block)
+
+# Jackknife, blocks
+for(i in 1:n_blocks){
+  
+  # Remove block, calculate RXY, assign to temp data.frame
+  assign(paste0("jack_rxy_",i),
+         tmp %>% filter(Block != i) %>% 
+           group_by(Variant_Effect) %>%
+           dplyr::summarise(RXY=sum(LXY)/sum(LYX),Jack=i))
   
 }
 
-bootstraps <- rbind(bootstrap_lhisi,bootstrap_lhip)
+# Collate results 
+table_names <- ls(pattern = "^jack_rxy_")
+table_list <- mget(table_names)
+rxy_lhip <- do.call(rbind, table_list) %>% mutate(Pop="LHIP")
+rm(list=ls(pattern = "^jack_rxy_"))
 
-bootstraps$Variant_Effect <- factor(bootstraps$Variant_Effect,
+# And combine pops
+jackknifes <- rbind(rxy_lhisi,
+                     rxy_lhip)
+jackknifes$Variant_Effect <- factor(jackknifes$Variant_Effect,
                                     levels=c("HIGH","MODERATE","LOW","MODIFIER"),
                                     labels=c("HIGH","MODERATE","LOW","MODIFIER"))
 
+# Plot the distributions of Rxy for each
+jackknife_se <- function(x){
+  sqrt((length(x) - 1) / length(x) * sum((x - mean(x))^2))
+}
 
-p <- bootstraps %>%
+plotting_results <- jackknifes %>%
+  group_by(Variant_Effect,Pop) %>%
+  dplyr::summarise(Mean=mean(RXY),
+                   SE=jackknife_se(RXY),
+                   Upper95=Mean+1.96*SE,
+                   Lower95=Mean-1.96*SE) %>%
+  ungroup
+
+p <- plotting_results %>% 
   ggplot() +
-  geom_errorbar(aes(y=Pop,x=ratio,xmin=lower_conf_95,xmax=upper_conf_95,fill=Variant_Effect),
-                position=position_dodge(width=0.6),width=0,
-                filter(bootstraps,Pop=="LHISI")) +
-  geom_point(aes(y=Pop,x=ratio,xmin=lower_conf_95,xmax=upper_conf_95,fill=Variant_Effect),
+  geom_errorbar(aes(y=Pop,xmax=Mean+SE,xmin=Mean-SE,group=Variant_Effect),
+                size=0.75,position=position_dodge(width=0.6),width=0,
+                filter(plotting_results,Pop=="LHISI")) + 
+  geom_point(aes(y=Pop,x=Mean,fill=Variant_Effect,group=Variant_Effect),
              position=position_dodge(width=0.6),pch=21,size=4.5,
-             filter(bootstraps,Pop=="LHISI")) +
-  scale_fill_manual(values=rev(new_colours[,3])) +
+             filter(plotting_results,Pop=="LHISI"))  +
+  scale_fill_manual(values=rev(new_colours[,3])) + 
   new_scale_fill() +
-  geom_errorbar(aes(y=Pop,x=ratio,xmin=lower_conf_95,xmax=upper_conf_95,fill=Variant_Effect),
-                position=position_dodge(width=0.6),width=0,
-                filter(bootstraps,Pop=="LHIP")) +
-  geom_point(aes(y=Pop,x=ratio,xmin=lower_conf_95,xmax=upper_conf_95,fill=Variant_Effect),
+  geom_errorbar(aes(y=Pop,xmax=Mean+SE,xmin=Mean-SE,group=Variant_Effect),
+                size=0.75,position=position_dodge(width=0.6),width=0,
+                filter(plotting_results,Pop=="LHIP")) + 
+  geom_point(aes(y=Pop,x=Mean,fill=Variant_Effect),
              position=position_dodge(width=0.6),pch=21,size=4.5,
-             filter(bootstraps,Pop=="LHIP")) +
-  scale_fill_manual(values=rev(new_colours[,2])) +
+             filter(plotting_results,Pop=="LHIP")) + 
+  scale_fill_manual(values=rev(new_colours[,2])) + 
   theme_bw() + 
   theme(axis.ticks=element_blank(),
         axis.title.y=element_blank(),
         panel.grid = element_blank(),
         axis.text.x=element_text(size=10),
         axis.text.y=element_blank(),
-        legend.position="none") + 
+        legend.position="none"
+        ) + 
   scale_x_continuous(
-    limits=c(0.51,0.78),
+    limits=c(0.45,0.93),
+    breaks=seq(0.5,0.9,0.1)) +
+  labs(x=expression(R[XY] ~ "(relative to wild individuals)")) ; p
+
+# Plot
+
+png(paste0(FIGURE_DIR,"/rxy_",format(Sys.time(),"%Y%m%d"),".png"),
+    width=6,height=3,units='in',res=300)
+plot(p)
+dev.off()
+
+# Now we compute the pairwise differences between mutation types within each
+# jackknife resample and calculate the t-statistic on the distribution of
+# differences. We then compute the probability of observing this t-value under
+# the null hypothesis that the RXY values are the same in both types. It is a
+# one sided test since we expect the value of RXY to go down to go down each
+# time we go up a type (e.g. from low to moderate impact).
+
+# Generate a data.frame of combinations manually then loop over combinations.
+
+combs <- data.frame(Type1=c("MODIFIER","MODIFIER","MODIFIER",
+                            "LOW","LOW",
+                            "MODERATE"),
+                    Type2=c("LOW","MODERATE","HIGH",
+                            "MODERATE","HIGH",
+                            "HIGH")) %>% arrange(Type2)
+pops <- c("LHISI","LHIP")
+
+for(pop in pops){
+  for(i in 1:nrow(combs)){
+    
+    # Get vectors of values
+    Type1=jackknifes %>% arrange(Jack) %>% filter(Variant_Effect == combs$Type1[i],Pop==pop) %>% pull(RXY)
+    Type2=jackknifes %>% arrange(Jack) %>% filter(Variant_Effect == combs$Type2[i],Pop==pop) %>% pull(RXY)
+    
+    # Calculate differences
+    diff=Type2-Type1
+    # Now calculate statistics for testing
+    diff_mean=mean(diff)
+    diff_se=jackknife_se(diff)
+    
+    # Compute paired t-statistic
+    t_stat <- diff_mean / diff_se
+    
+    # One-tailed p-value (expecting mean_diff > 0)
+    p_value <- pt(t_stat, df = n_blocks - 1)  
+    
+    print(paste0(pop,": ",combs$Type2[i]," < ",combs$Type1[i],
+                 ": t = ",round(t_stat,3),
+                 ", P = ",round(p_value,3)))
+    
+  } 
+}
+
+
+############################################
+###          Mutations in ROH            ###
+############################################
+
+# Again, we do the same thing for RXY to see if difference mutation classes are
+# more or less likely to fall inside of ROH.
+
+# Refer to code above for comments on block definition code.
+
+# LHISI
+
+tmp <- effects %>% 
+  filter(fate_lhisi == "segregating") %>% 
+  mutate(ROH_50 = ifelse(Coverage_lhisi > 0.5,"Upper","Lower"))
+
+# Define blocks
+tmp <- tmp[order(tmp$Scaffold, tmp$Position), ]
+tmp$Block <- NA
+scafs <- unique(tmp$Scaffold)
+total_blocks <- 93
+total_entries <- nrow(tmp)
+# Calculate the rough number of entries per block
+rough_block_size <- ceiling(total_entries / total_blocks)
+for(i in 1:length(scafs)){
+  entries <- tmp[tmp$Scaffold==scafs[i],]
+  blocks_in <- ceiling(nrow(entries)/rough_block_size)
+  blocks_assign <- sort(rep(1:blocks_in, length.out=nrow(entries)))
+  if(i == 1){
+    
+    tmp$Block[tmp$Scaffold==scafs[i]] <- blocks_assign
+    
+  } else {
+    
+    blocks_assign <- blocks_assign + max(tmp$Block[tmp$Scaffold==scafs[i-1]])
+    tmp$Block[tmp$Scaffold==scafs[i]] <- blocks_assign
+    
+  }
+}
+
+n_blocks <- max(tmp$Block)
+
+# Jackknife, blocks
+for(i in 1:n_blocks){
+  
+  # Remove block, calculate proportion of loci per type in low ROH regions
+  assign(paste0("jack_roh_",i),
+         tmp %>% filter(Block != i) %>%
+           group_by(Variant_Effect) %>%
+           dplyr::summarise(Ratio=sum(ROH_50=="Lower")/n(),Jack=i))
+
+}
+
+# Collate results 
+table_names <- ls(pattern = "^jack_roh_")
+table_list <- mget(table_names)
+roh_lhisi <- do.call(rbind, table_list) %>% mutate(Pop="LHISI")
+rm(list=ls(pattern = "^jack_roh_"))
+
+# LHIP
+
+tmp <- effects %>% 
+  filter(fate_lhip == "segregating") %>% 
+  mutate(ROH_50 = ifelse(Coverage_lhip > 0.5,"Upper","Lower"))
+
+# Define blocks
+tmp <- tmp[order(tmp$Scaffold, tmp$Position), ]
+tmp$Block <- NA
+scafs <- unique(tmp$Scaffold)
+total_blocks <- 92
+total_entries <- nrow(tmp)
+rough_block_size <- ceiling(total_entries / total_blocks)
+for(i in 1:length(scafs)){
+  entries <- tmp[tmp$Scaffold==scafs[i],]
+  blocks_in <- ceiling(nrow(entries)/rough_block_size)
+  blocks_assign <- sort(rep(1:blocks_in, length.out=nrow(entries)))
+  if(i == 1){
+    
+    tmp$Block[tmp$Scaffold==scafs[i]] <- blocks_assign
+    
+  } else {
+    
+    blocks_assign <- blocks_assign + max(tmp$Block[tmp$Scaffold==scafs[i-1]])
+    tmp$Block[tmp$Scaffold==scafs[i]] <- blocks_assign
+    
+  }
+}
+
+n_blocks <- max(tmp$Block)
+
+# Jackknife, blocks
+for(i in 1:n_blocks){
+  
+  # Remove block, calculate proportion of loci per type in low ROH regions
+  assign(paste0("jack_roh_",i),
+         tmp %>% filter(Block != i) %>%
+           group_by(Variant_Effect) %>%
+           dplyr::summarise(Ratio=sum(ROH_50=="Lower")/n(),Jack=i))
+  
+}
+
+# Collate results 
+table_names <- ls(pattern = "^jack_roh_")
+table_list <- mget(table_names)
+roh_lhip <- do.call(rbind, table_list) %>% mutate(Pop="LHIP")
+rm(list=ls(pattern = "^jack_roh_"))
+
+# And combine pops
+jackknifes <- rbind(roh_lhisi,
+                    roh_lhip)
+jackknifes$Variant_Effect <- factor(jackknifes$Variant_Effect,
+                                    levels=c("HIGH","MODERATE","LOW","MODIFIER"),
+                                    labels=c("HIGH","MODERATE","LOW","MODIFIER"))
+
+# Plot the distributions of Rxy for each
+jackknife_se <- function(x){
+  sqrt((length(x) - 1) / length(x) * sum((x - mean(x))^2))
+}
+
+plotting_results <- jackknifes %>%
+  group_by(Variant_Effect,Pop) %>%
+  dplyr::summarise(Mean=mean(Ratio),
+                   SE=jackknife_se(Ratio),
+                   Upper95=Mean+1.96*SE,
+                   Lower95=Mean-1.96*SE) %>%
+  ungroup
+
+p <- plotting_results %>% 
+  ggplot() +
+  geom_errorbar(aes(y=Pop,xmax=Mean+SE,xmin=Mean-SE,group=Variant_Effect),
+                size=0.75,position=position_dodge(width=0.6),width=0,
+                filter(plotting_results,Pop=="LHISI")) + 
+  geom_point(aes(y=Pop,x=Mean,fill=Variant_Effect,group=Variant_Effect),
+             position=position_dodge(width=0.6),pch=21,size=4.5,
+             filter(plotting_results,Pop=="LHISI"))  +
+  scale_fill_manual(values=rev(new_colours[,3])) + 
+  new_scale_fill() +
+  geom_errorbar(aes(y=Pop,xmax=Mean+SE,xmin=Mean-SE,group=Variant_Effect),
+                size=0.75,position=position_dodge(width=0.6),width=0,
+                filter(plotting_results,Pop=="LHIP")) + 
+  geom_point(aes(y=Pop,x=Mean,fill=Variant_Effect),
+             position=position_dodge(width=0.6),pch=21,size=4.5,
+             filter(plotting_results,Pop=="LHIP")) + 
+  scale_fill_manual(values=rev(new_colours[,2])) + 
+  theme_bw() + 
+  theme(axis.ticks=element_blank(),
+        axis.title.y=element_blank(),
+        panel.grid = element_blank(),
+        axis.text.x=element_text(size=10),
+        axis.text.y=element_blank(),
+        legend.position="none"
+  ) + 
+  scale_x_continuous(
+    limits=c(0.49,0.78),
     breaks=c(0.55,0.65,0.75),
     labels=c(55,65,75)) +
   labs(x="% variants in\nlow ROH regions") ; p
+
 # Plot
 
 png(paste0(FIGURE_DIR,"/muts_in_roh_",format(Sys.time(),"%Y%m%d"),".png"),
@@ -505,81 +799,42 @@ png(paste0(FIGURE_DIR,"/muts_in_roh_",format(Sys.time(),"%Y%m%d"),".png"),
 plot(p)
 dev.off()
 
-# Rxy
+# We do the same paired t-test approach we did above, except this time we
+# expect the more impact ful mutation classes to have a greater value than the
+# one below, so we calculate the difference in the other direction.
 
-# Something like this? 
-# Calculated like this gives us relative depletion in LHIP/LHISI compared to wild
-# Rather, 
+# Generate a data.frame of combinations manually then loop over combinations.
 
-effects %>% 
-#  filter(fate_lhisi != "absent") %>% 
-  mutate(RXY=MAF_lhisi/(1-MAF_wild),RYX=MAF_wild/(1-MAF_lhisi)) %>%
-  filter(!is.na(RXY),!is.na(RYX),RXY!=Inf,RYX!=Inf) %>% group_by(Variant_Effect) %>%
-  dplyr::summarise(RYX=sum(RYX)/sum(RXY))
+combs <- data.frame(Type1=c("MODIFIER","MODIFIER","MODIFIER",
+                            "LOW","LOW",
+                            "MODERATE"),
+                    Type2=c("LOW","MODERATE","HIGH",
+                            "MODERATE","HIGH",
+                            "HIGH")) %>% arrange(Type2)
+pops <- c("LHISI","LHIP")
 
-effects %>% 
-  #filter(fate_lhip != "absent") %>% 
-  mutate(RXY=MAF_lhip/(1-MAF_wild),RYX=MAF_wild/(1-MAF_lhip)) %>%
-  filter(!is.na(RXY),!is.na(RYX),RXY!=Inf,RYX!=Inf) %>% group_by(Variant_Effect) %>%
-  dplyr::summarise(RYX=sum(RYX)/sum(RXY))
-
-tmp <- effects %>% 
-  filter(fate_lhisi != "absent") %>% 
-  mutate(RXY=MAF_lhisi/(1-MAF_wild),RYX=MAF_wild/(1-MAF_lhisi)) %>%
-  filter(!is.na(RXY),!is.na(RYX),RXY!=Inf,RYX!=Inf,RXY!=-Inf,RYX!=-Inf)
-
-tmp <- effects %>% 
-  filter(fate_lhip != "absent") %>% 
-  mutate(RXY=MAF_lhip/(1-MAF_wild),RYX=MAF_wild/(1-MAF_lhip)) %>%
-  filter(!is.na(RXY),!is.na(RYX),RXY!=Inf,RYX!=Inf,RXY!=-Inf,RYX!=-Inf)
-
-N=100
-
-for(i in 1:N){
-  
-  print(i)
-  d <- tmp %>%
-    dplyr::group_by(Variant_Effect) %>%
-    dplyr::sample_n(size=n(),replace=T) %>%
-    dplyr::summarise(RYX=sum(RYX)/sum(RXY),
-                     rep=i)
-  
-  assign(paste0("lhisi_rxy_",i),
-         d)
-
-  
-  if(i==N){
+for(pop in pops){
+  for(i in 1:nrow(combs)){
     
-    # Collate results of bootstrap
-    table_names <- ls(pattern = "^lhisi_rxy")
-    table_list <- mget(table_names)
-    result_table <- do.call(rbind, table_list)
-    rm(list=ls(pattern = "^lhisi_rxy"),table_names)
+    # Get vectors of values
+    Type1=jackknifes %>% arrange(Jack) %>% filter(Variant_Effect == combs$Type1[i],Pop==pop) %>% pull(Ratio)
+    Type2=jackknifes %>% arrange(Jack) %>% filter(Variant_Effect == combs$Type2[i],Pop==pop) %>% pull(Ratio)
     
-    # Calculate SE
-    result_table_collated <- result_table %>% group_by(Variant_Effect) %>%
-      dplyr::summarise(mean=mean(RYX),
-                       se=sd(RYX),
-                       lower95=quantile(RYX,0.025),
-                       upper95=quantile(RYX,0.975))
+    # Calculate differences
+    diff=Type2-Type1
+    # Now calculate statistics for testing
+    diff_mean=mean(diff)
+    diff_se=jackknife_se(diff)
     
-  }
+    # Compute paired t-statistic
+    t_stat <- diff_mean / diff_se
+    
+    # One-tailed p-value (expecting mean_diff > 0)
+    p_value <- pt(t_stat, df = n_blocks - 1,lower.tail=F)  
+    
+    print(paste0(pop,": ",combs$Type2[i]," > ",combs$Type1[i],
+                 ": t = ",round(t_stat,3),
+                 ", P = ",round(p_value,3)))
+    
+  } 
 }
-
-ggplot(result_table_collated) + 
-  geom_errorbar(mapping=aes(y=mean,x=Variant_Effect,ymin=mean-se,ymax=mean+se),
-                width=0) + 
-  geom_point(mapping=aes(y=mean,x=Variant_Effect),pch=21,size=3,fill="grey88") + 
-  theme_bw()
-
-ggplot(result_table_collated) + 
-  geom_errorbar(mapping=aes(y=mean,x=Variant_Effect,ymin=lower95,ymax=upper95),
-                width=0) + 
-  geom_point(mapping=aes(y=mean,x=Variant_Effect),pch=21,size=3,fill="grey88") + 
-  theme_bw()
-
-ggplot(result_table) +
-  ggridges::geom_density_ridges(aes(y=Variant_Effect,x=RYX))
-
-# Huge 95 % intervals
-# So I think I'm calculating this wrong

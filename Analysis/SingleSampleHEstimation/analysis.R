@@ -48,7 +48,7 @@ het <- merge(het,lengths,by="Chrom")
 # Now calculate the proportion of sites covered by each sample for each scaffold
 # i.e. What is our sample size for estimating heterozygosity?
 
-het$Coverage <- het$Sites/het$Length
+  het$Coverage <- het$Sites/het$Length
 
 # Plot the H versus depth for the two depth classes
 
@@ -66,12 +66,13 @@ mean_het$Depth <- recode(mean_het$Depth,low = "2-4X",mid = "5-8X")
 # This will create spurious correlation
 # Also remove C01220, since her heterozygosity is produced by a different process
 
-p <- mean_het %>% filter(Pop != "Wild",Sample !="C01220") %>%
+p <- mean_het %>% 
+  #filter(Pop != "Wild",Sample !="C01220") %>%
   ggplot(aes(x=Sites,y=mean_het,fill=Pop,shape=Sex)) + 
   geom_smooth(method="lm",inherit.aes=F,aes(x=Sites,y=mean_het),colour="black") + 
   geom_point(size=3) + 
   scale_shape_manual(values=c(21,24)) +
-  my_fill_2 +
+  my_fill_3 +
   guides(fill = guide_legend(override.aes = list(shape = 21)),
          shape = guide_legend(override.aes = list(fill="lightgrey"))) +
   facet_wrap(~Depth,scales="free_x") + 
@@ -90,7 +91,7 @@ p <- mean_het %>% filter(Pop != "Wild",Sample !="C01220") %>%
                                            labels = c(expression(2%*%10^8),expression(3%*%10^8),
                                                       expression(4%*%10^8),expression(5%*%10^8)))
     )
-  )
+  ) ; p
 
 # Save figure
 
@@ -101,9 +102,19 @@ dev.off()
 
 # Run a simple model to estimate effect of mean_cov on mean_het
 
-mean_het %>% filter(Pop != "Wild",Depth == "2-4X",Sample != "C01220") %>%
+mean_het %>% 
+  filter(
+    Pop != "Wild",
+    Depth == "2-4X",
+    Sample != "C01220"
+  ) %>%
   lm(mean_het ~ Sites,data=.) %>% summary
-mean_het %>% filter(Pop != "Wild",Depth == "5-8X",Sample != "C01220") %>%
+mean_het %>% 
+  filter(
+    Pop != "Wild",
+    Depth == "5-8X",
+    Sample != "C01220"
+  ) %>%
   lm(mean_het ~ Sites,data=.) %>% summary
 
 # Refer to model outputs in figure caption
