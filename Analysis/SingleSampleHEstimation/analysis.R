@@ -67,7 +67,7 @@ mean_het$Depth <- recode(mean_het$Depth,low = "2-4X",mid = "5-8X")
 # Also remove C01220, since her heterozygosity is produced by a different process
 
 p <- mean_het %>% 
-  #filter(Pop != "Wild",Sample !="C01220") %>%
+  filter(Pop != "Wild",Sample !="C01220") %>%
   ggplot(aes(x=Sites,y=mean_het,fill=Pop,shape=Sex)) + 
   geom_smooth(method="lm",inherit.aes=F,aes(x=Sites,y=mean_het),colour="black") + 
   geom_point(size=3) + 

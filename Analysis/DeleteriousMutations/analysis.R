@@ -1,7 +1,5 @@
 ### Script to analyse and plot H from lcWGS
 
-setwd("/Volumes/Alter/Daus_WGS_Paper/Analysis/DeleteriousMutations/")
-
 ############################################
 ###           Environment setup          ###
 ############################################
@@ -22,7 +20,7 @@ library(ggridges)
 
 # Set environment
 
-source("../../config.R")
+source("/Volumes/Alter/Daus_WGS_Paper/config.R")
 setwd(paste0(WORKING_DIR,"/DeleteriousMutations"))
 
 # Functions
@@ -626,6 +624,37 @@ for(pop in pops){
     
     # One-tailed p-value (expecting mean_diff > 0)
     p_value <- pt(t_stat, df = n_blocks - 1)  
+    
+    print(paste0(pop,": ",combs$Type2[i]," < ",combs$Type1[i],
+                 ": t = ",round(t_stat,3),
+                 ", P = ",round(p_value,3)))
+    
+  } 
+}
+
+# Two sided tests
+
+for(pop in pops){
+  for(i in 1:nrow(combs)){
+    
+    # Get vectors of values
+    Type1=jackknifes %>% arrange(Jack) %>% filter(Variant_Effect == combs$Type1[i],Pop==pop) %>% pull(RXY)
+    Type2=jackknifes %>% arrange(Jack) %>% filter(Variant_Effect == combs$Type2[i],Pop==pop) %>% pull(RXY)
+    
+    # Calculate differences
+    diff=Type2-Type1
+    # Now calculate statistics for testing
+    diff_mean=mean(diff)
+    diff_se=jackknife_se(diff)
+    
+    # Compute paired t-statistic
+    t_stat <- diff_mean / diff_se
+    
+    # One-tailed p-value (expecting mean_diff > 0)
+    p_value <- pt(t_stat, df = n_blocks - 1)  
+    
+    # Two tailed p-values (mean difference in either directions
+    #p_value <- 2 * pt(-abs(t_stat), df = n_blocks - 1)
     
     print(paste0(pop,": ",combs$Type2[i]," < ",combs$Type1[i],
                  ": t = ",round(t_stat,3),

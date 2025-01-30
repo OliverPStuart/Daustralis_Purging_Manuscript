@@ -17,6 +17,7 @@ library(cowplot)
 library(readxl,       warn.conflicts = F)
 library(scales)
 library(tidyr)
+library(ggridges)
 
 ###### Coverage
 
@@ -279,10 +280,10 @@ H_v_length <- tmp %>%
   labs(x=expression(paste("Chromosome length (",bp%*%10^8,")")),
        y="Heterozygosity") + 
   annotate(geom="text",
-           x=3.6e8,
-           y=5.6e-4,
+           x = Inf, y = Inf,
+           hjust = 1.5, vjust = 4.5,
            label=paste0("p = ",
-                        round(summary(tmp_model)$coefficients[2,4],3))) ; H_v_length
+                        round(summary(tmp_model)$coefficients[2,4],3))); H_v_length
 
 png(paste0(FIGURE_DIR,"/H_v_chrom_length_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=5,height=5,units='in')
@@ -321,14 +322,15 @@ published_h <- islands %>%
   #                             expression(1%*%10^-3),
   #                             expression(1%*%10^-2))) +
   theme_bw() + 
-  theme(axis.text.y=element_blank(),
-        axis.title.y=element_blank(),
+  theme(
+#        axis.text.y=element_blank(),
+#        axis.title.y=element_blank(),
         axis.ticks=element_blank(),
         legend.position=c(0.85,0.85),
         legend.title = element_blank(),
         legend.background = element_rect(colour="black"),
         panel.grid=element_blank()) + 
-  labs(x="Heterozygosity") + 
+  labs(x="Heterozygosity",y="Count") + 
   annotate(geom="segment",
            y=3,yend=2.2,x=arrow_position,xend=arrow_position,
            arrow = arrow(type = "closed", length = unit(0.02, "npc"))) ; published_h
@@ -341,7 +343,6 @@ dev.off()
 # Also write list of species with lower H
 
 islands %>% filter(Observed_H <= s_stats$W_Mean)
-
 # Baiji, Cheetah, Island_fox, Snow_leopard, Tasmanian_devil
 
 # Finally, make a plot of per chromosome GC content
@@ -379,8 +380,8 @@ paul4_gc_plot <- paul4_gc %>%
   labs(x=expression(paste("Chromosome length (",bp%*%10^8,")")),
        y="GC content (%)") +
   annotate(geom="text",
-           x=3.6e8,
-           y=39.1,
+           x = Inf, y = Inf,
+           hjust = 1.5, vjust = 4.5,
            label=paste0("p = ",
                         round(summary(tmp_model)$coefficients[2,4],3)))
 
@@ -408,6 +409,28 @@ png(paste0(FIGURE_DIR,"/paul_summary_",format(Sys.time(),"%Y%m%d"),".png"),
 plot(paul4_summary)
 dev.off()
 
+# Is there a relationship between H and the distance from the centre of the chromosome?
+p1 <- H %>% 
+  group_by(Chromosome) %>%
+  mutate(Midpoint=(End+Start)/2,
+         Distance=abs(Midpoint-median(Midpoint))/max(Midpoint)) %>%
+  ggplot(aes(x=Distance,y=log(H))) + 
+  geom_point() + 
+  geom_smooth(method="lm") + 
+  facet_wrap(~Chromosome) +
+  theme_bw() + 
+  theme(axis.ticks=element_blank())
+p2 <- H %>% 
+  group_by(Chromosome) %>%
+  mutate(Midpoint=(End+Start)/2,
+         Distance=abs(Midpoint-median(Midpoint))/max(Midpoint)) %>%
+  ggplot(aes(x=Distance,y=log(H))) + 
+  geom_point() + 
+  geom_smooth(method="lm") +
+  theme_bw() + 
+  theme(axis.ticks=element_blank())
+p1 + p2 + plot_layout(widths=c(6,4))
+# In general, yes
 
 # One final figure...
 
@@ -424,8 +447,6 @@ gc_bic %>%
   geom_smooth(method="lm")
 
 ##### Genome wide ROH
-
-##### 2024-06-28 No longer including PLINK in results
 
 # Set environment
 
@@ -445,11 +466,6 @@ library(readxl,       warn.conflicts = F)
 # Get lengths
 lengths <- read.table("../../References/scaffold_lengths")[1:16,]
 colnames(lengths) <- c("CHR","Total")
-
-# Plink
-
-#roh_plink <- readr::read_table("GENOME_WIDE_ROH_PLINK.txt")
-#roh_plink <- roh_plink %>% mutate(Length = POS2-POS1)
 
 # BCFTOOLS
 
@@ -534,14 +550,14 @@ ROHs_figure_1 <- tmp %>%
   labs(x="Length cutoff",y=expression(F[ROH])) + 
   scale_fill_brewer(palette = "Blues")
 
-png(paste0(FIGURE_DIR,"/roh_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
+png(paste0(FIGURE_DIR,"/roh_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=5.5,height=5.5,units='in')
 plot(ROHs_figure_1)
 dev.off()
 
 # Also save this as a table
 
-write.table(tmp,paste0("roh_software_comparison_",format(Sys.time(),"%Y%m%d"),".txt"),
+write.table(tmp,paste0("roh_comparison_",format(Sys.time(),"%Y%m%d"),".txt"),
             row.names=F,col.names=T,quote=F,sep="\t")
 
 ### Count of ROH per size category
@@ -584,14 +600,14 @@ ROHs_figure_2 <- tmp %>%
   labs(x="Length",y="Count") + 
   scale_fill_brewer(palette = "Blues")
 
-png(paste0(FIGURE_DIR,"/roh_count_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
+png(paste0(FIGURE_DIR,"/roh_count_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
     res=300,width=5.5,height=5.5,units='in')
 plot(ROHs_figure_2)
 dev.off()
 
 # Also save as table
 
-write.table(tmp,paste0("roh_count_software_comparison_",format(Sys.time(),"%Y%m%d"),".txt"),
+write.table(tmp,paste0("roh_count_comparison_",format(Sys.time(),"%Y%m%d"),".txt"),
             row.names=F,col.names=T,quote=F,sep="\t")
 
 ### Get table of stats for all methods
@@ -686,94 +702,27 @@ write.table(roh_bcf_05_stats,paste0("roh_bcf_05_stats_",format(Sys.time(),"%Y%m%
 write.table(roh_bcf_06_stats,paste0("roh_bcf_06_stats_",format(Sys.time(),"%Y%m%d"),".txt"),
             row.names=F,col.names=T,quote=F,sep="\t")
 
-# Plotting ROH themselves
+# Plotting ROH length distribution in detail
 
-# Vector of colours
-colours <- rep(c("cornflowerblue","deepskyblue1"),8)
+breaks <- c(c(1,2,5) * rep(c(1e4,1e5,1e6),each=3),1e7)
 
-# Get cumulative start length of scaffolds to add to ROH coords
-lengths$Cumu_Length <- cumsum(as.numeric(lengths$Total)) - lengths$Total + 1
-lengths <- lengths %>% mutate(Middle=(Cumu_Length + lead(Cumu_Length))/2)
-lengths$Middle[16] <- mean(c(lengths$Cumu_Length[16],sum(lengths$Total)))
-
-# Get, for each method, a data.frame of adjusted ROH coords
-plink_roh_plot <- merge(lengths,roh_plink) %>% mutate(Method="PLINK",Order=1) %>%
-  filter(Length > 1e6) %>% mutate(Start_Adj = POS1 + Cumu_Length, End_Adj = POS2 + Cumu_Length) %>% 
-  select(CHR,Start_Adj,End_Adj,Length,Method,Order)
-
-bcf_04_roh_plot <- merge(lengths,roh_bcf_04) %>% mutate(Method="bcf, AF = 0.4",Order=2) %>%
-  filter(Length > 1e6) %>% mutate(Start_Adj = Start + Cumu_Length, End_Adj = End + Cumu_Length) %>% 
-  select(CHR,Start_Adj,End_Adj,Length,Method,Order)
-
-bcf_05_roh_plot <- merge(lengths,roh_bcf_05) %>% mutate(Method="bcf, AF = 0.4",Order=3) %>%
-  filter(Length > 1e6) %>% mutate(Start_Adj = Start + Cumu_Length, End_Adj = End + Cumu_Length) %>% 
-  select(CHR,Start_Adj,End_Adj,Length,Method,Order)
-
-bcf_06_roh_plot <- merge(lengths,roh_bcf_06) %>% mutate(Method="bcf, AF = 0.4",Order=4) %>%
-  filter(Length > 1e6) %>% mutate(Start_Adj = Start + Cumu_Length, End_Adj = End + Cumu_Length) %>% 
-  select(CHR,Start_Adj,End_Adj,Length,Method,Order)
-
-# Plot this as a geom_rect
-roh_coords_plot <- rbind(plink_roh_plot,bcf_04_roh_plot,
-      bcf_05_roh_plot,bcf_06_roh_plot) %>%
-  ggplot() + 
-  geom_rect(aes(xmin=Start_Adj,xmax=End_Adj,fill=CHR,ymin=Order-0.35,ymax=Order+0.35)) + 
-  scale_x_continuous(breaks=lengths$Middle,labels=lengths$CHR,
-                     limits=c(-40e6,sum(lengths$Total)+40e6),expand=c(0,0)) + 
-  scale_fill_manual(values=colours) + 
+p <- all_roh %>%
+  ggplot(aes(x=Length)) +
+  geom_histogram(aes(fill=AF),colour="black") + 
+  scale_fill_brewer(palette="Blues",guide="none") + 
+  scale_x_continuous(trans="log10",
+                     breaks=breaks) +
+  facet_wrap(~AF,ncol=1) + 
   theme_bw() + 
-  theme(legend.position="none",
-        axis.ticks=element_blank(),
-        axis.text.x=element_text(angle=30,hjust=1,vjust=1),
-        panel.grid=element_blank()) +
-  scale_y_continuous(breaks=c(1:4),
-                     labels=c("PLINK",
-                              "bcftools, AF = 0.4",
-                              "bcftools, AF = 0.5",
-                              "bcftools, AF = 0.6"))
+  ylab("Count") ; p
 
-png(paste0(FIGURE_DIR,"/roh_location_software_comparison_",format(Sys.time(),"%Y%m%d"),".png"),
-    res=300,width=10,height=3,units='in')
-plot(roh_coords_plot)
+png(paste0(FIGURE_DIR,"/roh_lengths_",format(Sys.time(),"%Y%m%d"),".png"),
+    res=300,width=5.5,height=5.5,units='in')
+plot(p)
 dev.off()
 
-### PSMC.... still in development
-
-data <- read.table("PAUL4_All_Het_PSMC_Results_Combined.txt",header=F,sep="\t")
-colnames(data) <- c("YearsAgo","Ne","Rep")
-
-# Should all YearsAgo be + 10^4
-data$YearsAgo <- data$YearsAgo + 10^4
-
-ggplot() + 
-  geom_rect(aes(xmin=19000,xmax=23000,ymin=1,ymax=2000000),fill="grey95",colour="grey95") +
-  geom_step(data=data[data$Rep != "main",],
-            aes(x=YearsAgo,y=Ne,group=Rep),colour="grey") + 
-  geom_step(data=data[data$Rep == "main",],
-            aes(x=YearsAgo,y=Ne),colour="cornflowerblue") + 
-  scale_y_continuous(trans="log10") + 
-  scale_x_continuous(trans="log10") + 
-  theme_bw() + 
-  theme(axis.ticks=element_blank(),
-        panel.grid.minor=element_blank()) + 
-  coord_cartesian(ylim=c(10,25000))
-
-ggplot() + 
-  geom_rect(aes(xmin=19000,xmax=23000,ymin=1,ymax=2000000),fill="grey95",colour="grey95") +
-  geom_step(data=data[data$Rep != "main",],
-            aes(x=YearsAgo,y=Ne,group=Rep),colour="grey") + 
-  geom_step(data=data[data$Rep == "main",],
-            aes(x=YearsAgo,y=Ne),colour="cornflowerblue") + 
-  scale_y_continuous(trans="log10") + 
-  scale_x_continuous(trans="log10") + 
-  theme_bw() + 
-  theme(axis.ticks=element_blank(),
-        panel.grid.minor=element_blank()) + 
-  coord_cartesian(ylim=c(10,25000),xlim=c(9999,11001))
-
-
-# Weird artefact to analyse, but we'll get there...
-# What could cause this...
-  
-
-
+all_roh %>%
+  group_by(AF) %>%
+  dplyr::summarise(Mean=mean(Length),
+                   SE=sd(Length)/sqrt(n()),
+                   Max=max(Length))
