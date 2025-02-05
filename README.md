@@ -30,7 +30,7 @@ Analysis of 24 individuals from wild, captive, and hybrid individuals using low-
 
 ### 2.5 Runs-of-homozygosity
 - `Scripts/Snakefiles/WGSGenotypeLikelihoods.smk` estimates genotype likelihoods at variable positions for all individuals accounting for masked regions.
-- `Scripts/lcwgs_rzooroh_slurm.sh` estimates the locations of ROH for all individuals. Refers to the following scripts:
+- `Scripts//SLURM/lcwgs_rzooroh_slurm.sh` estimates the locations of ROH for all individuals. Refers to the following scripts:
   - `Scripts/RScripts/rescale_gls_for_rzooroh.R` rescales genotype likelihood files from the first step to Phred scale.
   - `Scripts/RScripts/rzooroh_model_comparison.R` runs the model estimation procedure, producing summary figures of BIC/AIC/LLs for different parameter combinations.
 - `Scripts/RScripts/genotype_likelihood_roh_analysis.R` analyses ROH results and generates figures.
@@ -38,5 +38,5 @@ Analysis of 24 individuals from wild, captive, and hybrid individuals using low-
 
 ### 2.6 Deleterious mutations
 - `Scripts/Shell/build_snpeff_database.sh` builds a SnpEff database from the *D. australis references genome*
-- `Scripts/classify_var.sh` takes positions and non-reference alleles from allele frequency estimation and estimates their effects on protein function using the SnpEff database. Also classifies positions by how many individuals have that position contained within ROH.
+- `Scripts/Shell/classify_var.sh` takes positions and non-reference alleles from allele frequency estimation and estimates their effects on protein function using the SnpEff database. Also classifies positions by how many individuals have that position contained within ROH.
 - `Scripts/RScripts/deleterious_mutation_analysis.R` analyses the deleterious mutation data and generates figures.
