@@ -1,0 +1,4 @@
+Pop	Set1
+Wild	#6e95ff
+LHIP	#6ad253
+LHISI	#f5e325

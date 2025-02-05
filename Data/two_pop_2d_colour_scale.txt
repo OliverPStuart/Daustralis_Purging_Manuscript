@@ -1,0 +1,4 @@
+MODIFIER	#edfaea	#fefce5	#eef2ff
+LOW	#ccf0c5	#fcf5b5	#cedbff
+MODERATE	#9be18c	#f8ec6d	#9eb8ff
+HIGH	#69d253	#f5e325	#6e95ff
