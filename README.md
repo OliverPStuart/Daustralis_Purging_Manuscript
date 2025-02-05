@@ -9,7 +9,7 @@ Analysis of one wild male individual (Paul) sequenced to high (~20x) coverage.
 - `Scripts/Shell/paul4_gc_content.sh` estimates GC content for analysis.
 - `Scripts/RScripts/paul4_analysis.R` analyses data generated in the previous step, generating figures.
 
-## 2. Low-coverage data
+## 2 Low-coverage data
 Analysis of 24 individuals from wild, captive, and hybrid individuals using low-coverage (~2-6x) sequencing. Paul is included among the wild individuals but with different sequence data.
 
 ### 2.1 Alignment and QC
