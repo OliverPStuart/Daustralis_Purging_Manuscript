@@ -19,9 +19,10 @@
 !*.pbs
 !*.Rmd
 !*.slim
-!*.html
 !*.slurm
+!*.smk
 !.gitignore
 
 # And finally ignore all binary files
 *._*
+*.html
