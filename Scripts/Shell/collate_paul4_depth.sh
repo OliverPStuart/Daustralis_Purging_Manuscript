@@ -16,10 +16,5 @@ done
 
 # Zip all mosdepth results
 
-tar -cvzf lc_wgs_depth.tar.gz *mosdepth* *regions*  
+tar -cvzf lc_wgs_depth.tar.gz *mosdepth* *regions*
 rm *mosdepth* *regions*
-
-# Now run plotting script
-
-Rscript analysis.R
-

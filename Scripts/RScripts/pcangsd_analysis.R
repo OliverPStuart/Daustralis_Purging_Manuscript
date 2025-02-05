@@ -2,7 +2,7 @@
 
 # Set environment
 
-source(“/Volumes/Alter/Daus_WGS_Paper/config.R")
+source("/Volumes/Alter/Daus_WGS_Paper/Scripts/config.R")
 setwd(paste0(WORKING_DIR,"/PCangsd"))
 
 # Libraries

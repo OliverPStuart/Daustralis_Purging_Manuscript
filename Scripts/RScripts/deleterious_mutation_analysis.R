@@ -20,7 +20,7 @@ library(ggridges)
 
 # Set environment
 
-source("/Volumes/Alter/Daus_WGS_Paper/config.R")
+source("/Volumes/Alter/Daus_WGS_Paper/Scripts/config.R")
 setwd(paste0(WORKING_DIR,"/DeleteriousMutations"))
 
 # Functions
@@ -29,10 +29,6 @@ setwd(paste0(WORKING_DIR,"/DeleteriousMutations"))
 fold <- function(x) {
   ifelse(x > 0.5, 1 - x, x)
 }
-
-# Get colours
-
-source(paste0(DATA_DIR,"/colours.R"))
 
 ############################################
 ###            Data preparation          ###

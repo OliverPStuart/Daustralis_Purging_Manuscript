@@ -4,10 +4,6 @@
 
 HOME_DIR="/Volumes/Alter/LHISI"
 REF_DIR=paste0(HOME_DIR,"/References")
-
-#HOME_DIR="/home/ollie/LHISI_Thesis_Work"
-#REF_DIR=paste0("~/References")
-
 WORKING_DIR=paste0(HOME_DIR,"/Analyses/GenotypeLikelihoodROH")
 
 setwd(WORKING_DIR)

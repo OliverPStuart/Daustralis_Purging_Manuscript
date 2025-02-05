@@ -15,6 +15,7 @@ REF_DIR=${SCRATCH}/References
 ALN_DIR=${SCRATCH}/Alignments/WGS
 WORKING_DIR=${SCRATCH}/Analysis/ngsParalogAnalysis
 NGSPARALOG=${HOME_DIR}/ngsParalog
+SCRIPT_DIR=${HOME_DIR}/Scripts
 
 cd ${WORKING_DIR}
 
@@ -68,7 +69,7 @@ done
 
 # Paste the tmp files together, get row means with Rscript
 paste *tmp > tmp
-Rscript row_sums.R
+Rscript ${SCRIPT_DIR}/RScripts/row_sums.R
 rm *tmp*
 
 # Now paste to vars

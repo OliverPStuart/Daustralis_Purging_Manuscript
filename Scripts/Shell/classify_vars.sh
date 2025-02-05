@@ -160,5 +160,3 @@ gzcat ${REF_DIR}/Annotation/LHISI_Scaffold_Assembly.original_annotation.gff.gz |
 awk '$3 == "gene" {print $1"\t"$4"\t"$5"\t"$9}' > gene_coords.bed
 bedtools subtract -a gene_coords.bed -b ${REF_DIR}/Annotation/repeats.bed -A > gene_coords_masked.bed
 cut -d ";" -f1 gene_coords_masked.bed | cut -d "=" -f2 > unmasked_genes
-
-# Now run the RMarkdown file analysis.Rmd

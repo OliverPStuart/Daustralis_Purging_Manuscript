@@ -11,8 +11,8 @@ library(patchwork)
 
 # Set environment
 
-source("/Volumes/Alter/Daus_WGS_Paper/config.R")
-source(paste0(DATA_DIR,"/colours.R"))
+source("/Volumes/Alter/Daus_WGS_Paper/Scripts/config.R")
+source("/Volumes/Alter/Daus_WGS_Paper/Scripts/colours.R")
 setwd(paste0(WORKING_DIR,"/AnalysingWGSCoverage"))
 
 # Get sample details

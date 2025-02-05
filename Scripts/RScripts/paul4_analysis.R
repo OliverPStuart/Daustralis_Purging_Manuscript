@@ -3,7 +3,7 @@
 
 # Set environment
 
-source("/Volumes/Alter/Daus_WGS_Paper/config.R")
+source("/Volumes/Alter/Daus_WGS_Paper/Scripts/config.R")
 setwd(paste0(WORKING_DIR,"/PAUL4"))
 
 # Libraries
@@ -447,21 +447,6 @@ gc_bic %>%
   geom_smooth(method="lm")
 
 ##### Genome wide ROH
-
-# Set environment
-
-source("../../config.R")
-setwd(paste0(WORKING_DIR,"/PAUL4"))
-
-# Libraries
-
-library(dplyr)
-library(magrittr)
-library(ggplot2)
-library(Hmisc)
-library(patchwork)
-library(cowplot)
-library(readxl,       warn.conflicts = F)
 
 # Get lengths
 lengths <- read.table("../../References/scaffold_lengths")[1:16,]

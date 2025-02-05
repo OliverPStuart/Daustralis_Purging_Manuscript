@@ -1,4 +1,5 @@
 ### Building snpEff database for Dryococelus australis
+### Some additional massaging done to make the original annotation fit the GenBank contig names
 
 # Download snpeff
 cd ~

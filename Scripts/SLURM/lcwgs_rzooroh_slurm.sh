@@ -34,7 +34,7 @@ cd $ANALYSIS_DIR/GenotypeLikelihoodROH
 
 for file in $(echo *beagle*)
 do
-	Rscript rescale_gls.R ${file}
+	Rscript ${SCRIPT_DIR}/RScripts/rescale_gls.R ${file}
 done
 
 # Now tar all the beagle files because they're not
@@ -71,7 +71,7 @@ rm *_CM*
 
 for pop in lhisi lhip all
 do
-  Rscript model_comparison.R ${pop}_genome.pl.gz
+  Rscript ${SCRIPT_DIR}/RScripts/model_comparison.R ${pop}_genome.pl.gz
 done
 
 # Now we manually observe the results and plot with other scripts

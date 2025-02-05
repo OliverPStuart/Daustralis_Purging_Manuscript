@@ -136,6 +136,3 @@ dev.off()
 save(file = paste0(pop,"_model_results.RData"),
      list = ls()[grep(".*rate.*results",ls())])
 
-# Move up again....... just in case
-
-setwd("..")

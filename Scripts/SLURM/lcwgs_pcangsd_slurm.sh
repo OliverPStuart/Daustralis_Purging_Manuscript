@@ -20,7 +20,7 @@ eval "$(conda shell.bash hook)"
 
 ### Evironment
 cd /mnt/data/dayhoff/home/u6905905/Daus_WGS_Paper
-. shell.config
+. Scripts/shell.config
 
 SOFTWARE_DIR=/mnt/data/dayhoff/home/u6905905
 PCANGSD=${SOFTWARE_DIR}/pcangsd/pcangsd/pcangsd.py

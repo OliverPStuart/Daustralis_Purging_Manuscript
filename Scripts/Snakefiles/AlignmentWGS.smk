@@ -49,7 +49,7 @@ rule map:
 		r2=READ_DIR + "/temp_{sample}_R2.fastq.gz"
 	output:
 		ALN_DIR + "/{sample}.bam"
-	params: 
+	params:
 		aln = ALN_DIR
 	threads: 10
 	shell:
