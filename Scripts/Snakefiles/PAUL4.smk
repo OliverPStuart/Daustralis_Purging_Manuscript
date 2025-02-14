@@ -1,8 +1,7 @@
 ### Snakefile for PAUL4 analysis. The pipeline takes reads, maps and
 ### deduplicates them, calls variants in parallel with FreeBayes, and filters
 ### them. Then, it measures genome wide H in 1mbp bins with 500kbp sliding windows,
-### estimates ROH coordinates with plink and bcftools, and performs a psmc
-### analysis with 100 bootstraps.
+### estimates ROH coordinates with bcftools.
 
 ### May add a rule to estimate recombination map using ismc.
 
