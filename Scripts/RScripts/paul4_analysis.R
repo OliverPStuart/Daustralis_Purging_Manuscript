@@ -521,7 +521,6 @@ tmp <- data.frame(ROH=c(unlist(lapply(cutoffs,FUN=roh_filt,dataset=roh_bcf_04)),
                           "AF = 0.6"),each=4))
 
 ROHs_figure_1 <- tmp %>%
-  #filter(Method != "PLINK") %>%
   ggplot(aes(x=as.factor(Length),y=ROH,fill=Method)) + 
   geom_bar(stat="identity",position=position_dodge(),colour="black") + 
   scale_y_continuous(limits=c(0,1),expand=c(0,0)) + 
@@ -569,7 +568,6 @@ tmp <- count_function(roh_bcf_04,label_="AF = 0.4") %>%
 tmp
 
 ROHs_figure_2 <- tmp %>%
-  #filter(Method != "PLINK") %>%
   ggplot(aes(x=Bin,y=Count,fill=Method)) + 
   geom_bar(stat="identity",position=position_dodge(),colour="black") + 
   scale_y_continuous(limits=c(0,820),expand=c(0,0)) + 
@@ -597,26 +595,6 @@ write.table(tmp,paste0("roh_count_comparison_",format(Sys.time(),"%Y%m%d"),".txt
 
 ### Get table of stats for all methods
 ### Per chrom + overall mean, median, min, max, sd, etc
-
-tmp <- roh_plink %>%
-  filter(Length > 1e5) %>% group_by(CHR) %>%
-  summarise(Mean=mean(Length),
-            SD=sd(Length),
-            Max=max(Length),
-            Min=min(Length),
-            Median=median(Length),
-            Count=n(),
-            Method="PLINK")
-tmp1 <- roh_plink %>% filter(Length > 1e5) %>%
-  summarise(CHR="Overall",
-            Mean=mean(Length),
-            SD=sd(Length),
-            Max=max(Length),
-            Min=min(Length),
-            Median=median(Length),
-            Count=n(),
-            Method="PLINK")
-roh_plink_stats <- rbind(tmp,tmp1)
 
 tmp <- roh_bcf_04 %>%
   filter(Length > 1e5) %>% group_by(CHR) %>%
@@ -678,8 +656,6 @@ tmp1 <- roh_bcf_06 %>% filter(Length > 1e5) %>%
             Method="BCF_AF_06")
 roh_bcf_06_stats <- rbind(tmp,tmp1)
 
-write.table(roh_plink_stats,paste0("roh_plink_stats_",format(Sys.time(),"%Y%m%d"),".txt"),
-            row.names=F,col.names=T,quote=F,sep="\t")
 write.table(roh_bcf_04_stats,paste0("roh_bcf_04_stats_",format(Sys.time(),"%Y%m%d"),".txt"),
             row.names=F,col.names=T,quote=F,sep="\t")
 write.table(roh_bcf_05_stats,paste0("roh_bcf_05_stats_",format(Sys.time(),"%Y%m%d"),".txt"),
