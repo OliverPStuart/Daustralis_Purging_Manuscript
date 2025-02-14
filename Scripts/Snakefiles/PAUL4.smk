@@ -37,8 +37,7 @@ rule all:
 		OUT_DIR + "/GENOME_WIDE_H.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_04_BCFTOOLS.txt",
 		OUT_DIR + "/GENOME_WIDE_ROH_05_BCFTOOLS.txt",
-		OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt",
-		OUT_DIR + "/PAUL4_All_Het_PSMC_Results_Combined.txt"
+		OUT_DIR + "/GENOME_WIDE_ROH_06_BCFTOOLS.txt"
 
 ### Map the files to the reference and follow samtools pipeline to remove duplicates
 rule map:
