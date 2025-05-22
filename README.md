@@ -30,7 +30,7 @@ Analysis of 24 individuals from wild, captive, and hybrid individuals using low-
 
 ### 2.5 Runs-of-homozygosity
 - `Scripts/Snakefiles/WGSGenotypeLikelihoods.smk` estimates genotype likelihoods at variable positions for all individuals accounting for masked regions.
-- `Scripts//SLURM/lcwgs_rzooroh_slurm.sh` estimates the locations of ROH for all individuals. Refers to the following scripts:
+- `Scripts/SLURM/lcwgs_rzooroh_slurm.sh` estimates the locations of ROH for all individuals. Refers to the following scripts:
   - `Scripts/RScripts/rescale_gls_for_rzooroh.R` rescales genotype likelihood files from the first step to Phred scale.
   - `Scripts/RScripts/rzooroh_model_comparison.R` runs the model estimation procedure, producing summary figures of BIC/AIC/LLs for different parameter combinations.
 - `Scripts/RScripts/genotype_likelihood_roh_analysis.R` analyses ROH results and generates figures.
