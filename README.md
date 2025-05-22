@@ -37,6 +37,6 @@ Analysis of 24 individuals from wild, captive, and hybrid individuals using low-
 - `Scripts/RScripts/population_base_bias_in_f_estimate.R` analyses ROH results from different base population models and generates figures.
 
 ### 2.6 Deleterious mutations
-- `Scripts/Shell/build_snpeff_database.sh` builds a SnpEff database from the *D. australis references genome*
+- `Scripts/Shell/build_snpeff_database.sh` builds a SnpEff database from the *D. australis* reference genome.
 - `Scripts/Shell/classify_var.sh` takes positions and non-reference alleles from allele frequency estimation and estimates their effects on protein function using the SnpEff database. Also classifies positions by how many individuals have that position contained within ROH.
 - `Scripts/RScripts/deleterious_mutation_analysis.R` analyses the deleterious mutation data and generates figures.
